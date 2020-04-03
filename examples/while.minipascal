@@ -1,0 +1,16 @@
+program test_while;
+begin
+  var i: integer;
+  i := 0;
+  while i < 10 do 
+  begin
+    i := i +1;
+    if i < 5 then
+    begin
+      var i: integer;
+      i := 5;
+      writeln(i);
+    end
+    else writeln(i);
+  end;
+end.

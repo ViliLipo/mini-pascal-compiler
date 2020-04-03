@@ -1,0 +1,8 @@
+program test_real;
+begin
+  var pi: real;
+  pi := 3.14;
+  var halfpi: real;
+  halfpi := pi / 2.0;
+  println(halfpi);
+end.

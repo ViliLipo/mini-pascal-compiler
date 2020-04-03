@@ -1,0 +1,4 @@
+var i : int := 124 + 200;
+var f : float := 3.14;
+var b: bool := 1 <> 0;
+var s: string := "wow this is amazing";
