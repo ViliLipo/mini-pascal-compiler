@@ -1,13 +1,81 @@
+use std::fmt;
 use crate::constants;
 use crate::source::Source;
+
+#[derive(Debug)]
+pub enum TokenKind {
+    Identifier,
+    StringLiteral,
+    IntegerLiteral,
+    RealLiteral,
+    Eof,
+    Error,
+    Var,
+    And,
+    Or,
+    Not,
+    If,
+    Then,
+    Else,
+    Of,
+    While,
+    Do,
+    Begin,
+    End,
+    Array,
+    Procedure,
+    Function,
+    Program,
+    Assert,
+    Return,
+    Plus,
+    Minus,
+    Multi,
+    Division,
+    Modulo,
+    Equal,
+    NotEqual,
+    SmallerThan,
+    LargerThan,
+    ESmallerThan,
+    ELargerThan,
+    OpenBracket,
+    CloseBracket,
+    OpenSquareBracket,
+    CloseSquareBracket,
+    Dot,
+    Colon,
+    Comma,
+    SemiColon,
+    Assign,
+}
+
+impl PartialEq for TokenKind {
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Copy for TokenKind {}
+
+impl Clone for TokenKind {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 pub struct Token {
     pub row: usize,
     pub column: usize,
     pub lexeme: String,
-    pub t_type: String,
+    pub token_kind: TokenKind,
 }
-
 
 impl Clone for Token {
     fn clone(&self) -> Token {
@@ -15,7 +83,7 @@ impl Clone for Token {
             row: self.row,
             column: self.column,
             lexeme: self.lexeme.clone(),
-            t_type: self.t_type.clone(),
+            token_kind: self.token_kind,
         }
     }
 }
@@ -35,7 +103,7 @@ impl Scanner {
                 row: self.src.get_row(),
                 column: self.src.get_column(),
                 lexeme: String::from("eof"),
-                t_type: String::from("eof"),
+                token_kind: TokenKind::Eof,
             };
         }
         for func in &self.scanfunctions {
@@ -49,7 +117,7 @@ impl Scanner {
             row: self.src.get_row(),
             column: self.src.get_column(),
             lexeme: String::from(""),
-            t_type: String::from("lexical_error"),
+            token_kind: TokenKind::Error,
         }
     }
 
@@ -142,7 +210,6 @@ fn scan_digit_part(src: &mut Source) -> Option<Token> {
         false => None,
         true => {
             let mut lexeme = String::from("");
-            let t_type = String::from("integer_literal");
             while src.peek().is_digit(10) {
                 lexeme.push(src.get_next_char());
             }
@@ -150,7 +217,7 @@ fn scan_digit_part(src: &mut Source) -> Option<Token> {
                 lexeme: lexeme,
                 row: src.get_row(),
                 column: src.get_column(),
-                t_type: t_type,
+                token_kind: TokenKind::IntegerLiteral,
             })
         }
     }
@@ -159,9 +226,8 @@ fn scan_digit_part(src: &mut Source) -> Option<Token> {
 fn scan_exponent(src: &mut Source) -> Option<Token> {
     match src.peek() == 'e' {
         false => None,
-        true=> {
+        true => {
             let mut lexeme = String::from("");
-            let t_type = String::from("partial_real");
             lexeme.push(src.get_next_char());
             if src.peek() == '+' || src.peek() == '-' {
                 lexeme.push(src.get_next_char());
@@ -170,9 +236,9 @@ fn scan_exponent(src: &mut Source) -> Option<Token> {
                 None => None, // TODO: Lexical error
                 Some(token2) => {
                     lexeme = lexeme + token2.lexeme.as_str();
-                    Some(Token{
+                    Some(Token {
                         lexeme: lexeme,
-                        t_type: t_type,
+                        token_kind: TokenKind::Error,
                         row: src.get_row(),
                         column: src.get_column(),
                     })
@@ -198,16 +264,13 @@ fn scan_number(src: &mut Source) -> Option<Token> {
                         lexeme = lexeme + token2.lexeme.as_str();
                         match scan_exponent(src) {
                             None => (),
-                            Some(token3) => {
-                                lexeme = lexeme + token3.lexeme.as_str()
-                            }
+                            Some(token3) => lexeme = lexeme + token3.lexeme.as_str(),
                         };
-                        let t_type = String::from("real_literal");
                         let column = src.get_column();
                         let row = src.get_row();
                         Some(Token {
                             lexeme: lexeme,
-                            t_type: t_type,
+                            token_kind: TokenKind::RealLiteral,
                             column: column,
                             row: row,
                         })
@@ -224,7 +287,7 @@ fn scan_identifier_or_keyword(src: &mut Source) -> Option<Token> {
         false => None,
         true => {
             let mut lexeme = String::from("");
-            let mut t_type = String::from("identifier");
+            let mut t_type = TokenKind::Identifier;
             let row = src.get_row();
             let column = src.get_column();
             while src.peek().is_alphanumeric() || src.peek() == '_' {
@@ -232,11 +295,11 @@ fn scan_identifier_or_keyword(src: &mut Source) -> Option<Token> {
             }
             let keywords = constants::get_keywords();
             if keywords.contains(&lexeme.as_str()) {
-                t_type = lexeme.clone();
+                t_type = kw_str_to_tokenkind(lexeme.as_str());
             }
             Some(Token {
                 lexeme: lexeme,
-                t_type: t_type,
+                token_kind: t_type,
                 row: row,
                 column: column,
             })
@@ -255,8 +318,9 @@ fn scan_colon_or_assign(src: &mut Source) -> Option<Token> {
                 }
                 _ => (),
             }
+            let token_kind = special_symbol_to_tokenkind(lexeme.as_str());
             Some(Token {
-                t_type: lexeme.clone(),
+                token_kind,
                 lexeme: lexeme,
                 column: src.get_column(),
                 row: src.get_row(),
@@ -296,7 +360,7 @@ fn scan_special_symbols(src: &mut Source) -> Option<Token> {
                 }
             }
             Some(Token {
-                t_type: lexeme.clone(),
+                token_kind: special_symbol_to_tokenkind(lexeme.as_str()),
                 lexeme: lexeme,
                 row: src.get_row(),
                 column: src.get_column(),
@@ -338,12 +402,62 @@ fn scan_string_literal(src: &mut Source) -> Option<Token> {
             }
             Some(Token {
                 lexeme: lexeme,
-                t_type: String::from("string_literal"),
+                token_kind: TokenKind::StringLiteral,
                 column: src.get_column(),
                 row: src.get_row(),
             })
         }
         _ => None,
+    }
+}
+
+fn kw_str_to_tokenkind<'a>(kw_str: &'a str) -> TokenKind {
+    match kw_str {
+        "var" => TokenKind::Var,
+        "and" => TokenKind::And,
+        "or" => TokenKind::Or,
+        "if" => TokenKind::If,
+        "then" => TokenKind::Then,
+        "else" => TokenKind::Else,
+        "of" => TokenKind::Of,
+        "while" => TokenKind::While,
+        "do" => TokenKind::Do,
+        "begin" => TokenKind::Begin,
+        "end" => TokenKind::End,
+        "array" => TokenKind::Array,
+        "procedure" => TokenKind::Procedure,
+        "function" => TokenKind::Function,
+        "program" => TokenKind::Program,
+        "assert" => TokenKind::Assert,
+        "return" => TokenKind::Return,
+        _ => TokenKind::Error,
+    }
+}
+
+fn special_symbol_to_tokenkind<'a>(kw_str: &'a str) -> TokenKind {
+    match kw_str {
+        "+" => TokenKind::Plus,
+        "-" => TokenKind::Minus,
+        "*" => TokenKind::Multi,
+        "/" => TokenKind::Division,
+        "%" => TokenKind::Modulo,
+        "=" => TokenKind::Equal,
+        "<>" => TokenKind::NotEqual,
+        "<" => TokenKind::SmallerThan,
+        "<=" => TokenKind::ESmallerThan,
+        ">" => TokenKind::LargerThan,
+        ">=" => TokenKind::ELargerThan,
+        "(" => TokenKind::OpenBracket,
+        ")" => TokenKind::CloseBracket,
+        "[" => TokenKind::OpenSquareBracket,
+        "]" => TokenKind::CloseSquareBracket,
+        "." => TokenKind::Dot,
+        "," => TokenKind::Comma,
+        ":" => TokenKind::Colon,
+        ";" => TokenKind::SemiColon,
+        ":=" => TokenKind::Assign,
+        "!" => TokenKind::Not,
+        _ => TokenKind::Error,
     }
 }
 
@@ -360,10 +474,15 @@ pub fn build_scanner(source: Source) -> Scanner {
     }
 }
 
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::source;
+
+    fn variant_eq<T>(a: &T, b: &T) -> bool {
+        std::mem::discriminant(a) == std::mem::discriminant(b)
+    }
 
     fn get_scanner(text: String) -> Scanner {
         let s = source::create_source(text);
@@ -376,9 +495,9 @@ mod test {
         let mut scanner = get_scanner(text);
         let t = scanner.get_next_token();
         let ok_lexeme = String::from("variable_name_12345");
-        let ok_t_type = String::from("identifier");
+        let ok_t_type = TokenKind::Identifier;
         assert_eq!(ok_lexeme, t.lexeme);
-        assert_eq!(ok_t_type, t.t_type);
+        assert!(variant_eq(&ok_t_type, &t.token_kind));
     }
 
     #[test]
@@ -386,7 +505,7 @@ mod test {
         let text = String::from("3.14159");
         let mut scanner = get_scanner(text);
         let t = scanner.get_next_token();
-        assert_eq!("real_literal", t.t_type.as_str());
+        assert!(variant_eq(&TokenKind::RealLiteral, &t.token_kind));
         assert_eq!("3.14159", t.lexeme.as_str());
     }
 
@@ -395,7 +514,7 @@ mod test {
         let text = String::from("3.14159e+10");
         let mut scanner = get_scanner(text);
         let t = scanner.get_next_token();
-        assert_eq!("real_literal", t.t_type.as_str());
+        assert!(variant_eq(&TokenKind::RealLiteral, &t.token_kind));
         assert_eq!("3.14159e+10", t.lexeme.as_str());
     }
 
@@ -404,27 +523,26 @@ mod test {
         let text = String::from("\"lit string\"");
         let mut scanner = get_scanner(text);
         let t = scanner.get_next_token();
-        assert_eq!("string_literal", t.t_type.as_str());
+        assert!(variant_eq(&TokenKind::StringLiteral, &t.token_kind));
         assert_eq!("\"lit string\"", t.lexeme.as_str());
     }
-
 
     #[test]
     fn test_scan_declaration_stmnt() {
         let text = String::from("var MAXIMIUM_POWER_999: integer := 99999;\n");
         let mut scanner = get_scanner(text);
         let ok_tokens = vec![
-            ("var", "var"),
-            ("identifier", "MAXIMIUM_POWER_999"),
-            (":", ":"),
-            ("identifier", "integer"),
-            (":=", ":="),
-            ("integer_literal", "99999"),
-            (";", ";"),
+            (TokenKind::Var, "var"),
+            (TokenKind::Identifier, "MAXIMIUM_POWER_999"),
+            (TokenKind::Colon, ":"),
+            (TokenKind::Identifier, "integer"),
+            (TokenKind::Assign, ":="),
+            (TokenKind::IntegerLiteral, "99999"),
+            (TokenKind::SemiColon, ";"),
         ];
         for ok in ok_tokens {
             let token = scanner.get_next_token();
-            assert_eq!(ok.0, token.t_type.as_str());
+            assert!(variant_eq(&ok.0, &token.token_kind));
             assert_eq!(ok.1, token.lexeme.as_str());
         }
     }

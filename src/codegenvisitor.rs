@@ -1,4 +1,6 @@
 use crate::ast::*;
+use crate::semanticvisitor::string_as_opkind;
+use crate::semanticvisitor::OpKind;
 use crate::symboltable::Entry;
 use crate::symboltable::Symboltable;
 use crate::visitor::Visitor;
@@ -57,6 +59,88 @@ impl CodeGenVisitor {
             format!("{} {}", t, item_id.clone())
         }
     }
+
+    fn numeric_operation_converter(operator: String) -> String {
+        match operator.as_str() {
+            "<>" => String::from("!="),
+            _ => operator,
+        }
+    }
+    fn numeric_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
+        let old_op = node.get_token().lexeme.clone();
+        let op = CodeGenVisitor::numeric_operation_converter(old_op);
+        let text = format!(
+            "{} = {} {} {};\n",
+            node.get_result_addr(),
+            lhs_addr,
+            op,
+            rhs_addr,
+        );
+        self.buffer.push_str(text.as_str());
+    }
+
+    fn string_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
+        let op = node.get_token().lexeme;
+        let opkind = string_as_opkind(&op);
+        let result_addr = node.get_result_addr();
+        let text = match opkind {
+            OpKind::Addition => {
+                let text = format!(
+                    "strcpy({},{});\nstrcat({},{});\n",
+                    result_addr.clone(),
+                    lhs_addr,
+                    result_addr,
+                    rhs_addr,
+                );
+                Some(text)
+            }
+            OpKind::Relational => {
+                match op.as_str() {
+                    "=" => {
+                        let text = format!(
+                            "booltmp = strcmp({}, {});\n{} = booltmp == 0;\n",
+                            lhs_addr,
+                            rhs_addr,
+                            result_addr,
+                            );
+                        Some(text)
+                    },
+                    "<>" => {
+                        let text = format!(
+                            "booltmp = strcmp({}, {});\n{} = booltmp != 0;\n",
+                            lhs_addr,
+                            rhs_addr,
+                            result_addr,
+                            );
+                        Some(text)
+                    },
+                    "<" => {
+                        let text = format!(
+                            "booltmp = strcmp({}, {});\n{} = booltmp < 0;\n",
+                            lhs_addr,
+                            rhs_addr,
+                            result_addr,
+                            );
+                        Some(text)
+                    },
+                    ">" => {
+                        let text = format!(
+                            "booltmp = strcmp({}, {});\n{} = booltmp < 0;\n",
+                            rhs_addr,
+                            lhs_addr,
+                            result_addr,
+                            );
+                        Some(text)
+                    },
+                    _ => None
+                }
+            }
+            _ => None,
+        };
+        if let Some(t) = text {
+            self.buffer.push_str(t.as_str());
+        }
+    }
 }
 
 impl Visitor for CodeGenVisitor {
@@ -68,6 +152,7 @@ impl Visitor for CodeGenVisitor {
     fn visit_program(&mut self, node: &mut Program) {
         self.declaration_buffer.push_str("#include <stdio.h>\n");
         self.declaration_buffer.push_str("#include <string.h>\n");
+        self.declaration_buffer.push_str("int booltmp = 0;\n");
         self.declaration_buffer.push_str("int main() {\n");
         self.symboltable.enter_scope_with_number(1);
         for child in node.get_children() {
@@ -140,8 +225,7 @@ impl Visitor for CodeGenVisitor {
                 self.declaration_buffer.push_str(decl_text.as_str());
                 match lhs_type.as_str() {
                     "integer" | "real" => {
-                        let text = format!("{} = {} {} {};\n", result_addr, lhs_addr, op, rhs_addr);
-                        self.buffer.push_str(text.as_str());
+                        self.numeric_expression(node, lhs_addr, rhs_addr);
                     }
                     "string" => match op.clone().as_str() {
                         "+" => {

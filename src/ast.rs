@@ -1,4 +1,5 @@
 use crate::scanner::Token;
+use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
 use std::any::Any;
 
@@ -486,25 +487,25 @@ impl Node for ErrorNode {
 }
 
 pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
-    match token.t_type.as_str() {
-        "program" => Box::from(Program {
+    match token.token_kind {
+        TokenKind::Program => Box::from(Program {
             token,
             children: Vec::new(),
         }),
-        "begin" => Box::from(Block {
+        TokenKind::Begin => Box::from(Block {
             token,
             children: Vec::new(),
             scope_no: -1,
         }),
-        "var" => Box::from(Declaration {
+        TokenKind::Var => Box::from(Declaration {
             token,
             children: Vec::new(),
         }),
-        ":=" => Box::from(Assignment {
+        TokenKind::Assign => Box::from(Assignment {
             token,
             children: Vec::new(),
         }),
-        "identifier" => {
+        TokenKind::Identifier => {
             if flag != "call" {
                 Box::from(Variable {
                     token,
@@ -522,25 +523,36 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
                 })
             }
         }
-        "real_literal" | "string_literal" | "integer_literal" => Box::from(Literal {
-            token,
-            children: Vec::new(),
-            type_id: String::new(),
-            result_addr: String::new(),
-        }),
-        "+" | "-" | "*" | "/" | "%" | "<" | ">" | "<=" | ">=" | "=" | "or" | "and" => {
-            Box::from(Expression {
+        TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
+            Box::from(Literal {
                 token,
                 children: Vec::new(),
                 type_id: String::new(),
                 result_addr: String::new(),
             })
         }
-        "if" => Box::from(IfNode {
+        TokenKind::Plus
+        | TokenKind::Minus
+        | TokenKind::Multi
+        | TokenKind::Division
+        | TokenKind::Modulo
+        | TokenKind::SmallerThan
+        | TokenKind::LargerThan
+        | TokenKind::ESmallerThan
+        | TokenKind::ELargerThan
+        | TokenKind::Equal
+        | TokenKind::Or
+        | TokenKind::And => Box::from(Expression {
+            token,
+            children: Vec::new(),
+            type_id: String::new(),
+            result_addr: String::new(),
+        }),
+        TokenKind::If => Box::from(IfNode {
             token,
             children: Vec::new(),
         }),
-        "while" => Box::from(WhileNode {
+        TokenKind::While => Box::from(WhileNode {
             token,
             children: Vec::new(),
         }),

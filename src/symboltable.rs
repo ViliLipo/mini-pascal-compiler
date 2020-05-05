@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+
 pub struct Entry {
     pub name: String,
     pub category: String,

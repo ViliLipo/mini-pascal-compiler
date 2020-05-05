@@ -3,5 +3,10 @@ begin
   var s: string;
   s := "YOLO";
   s := s + " SWAG";
+  var a: string;
+  var b: string;
+  a := "AASI";
+  b := "KOIRA"; 
   writeln(s);
+  writeln(a < b);
 end.

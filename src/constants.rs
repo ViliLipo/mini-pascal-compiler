@@ -25,7 +25,8 @@ pub fn get_keywords<'a>() -> Vec<&'a str> {
 
 pub fn get_special_symbols<'a>() -> Vec<&'a str> {
     vec![
-        "+", "-", "*", "/", "%", "=", "<>", "<", "<=", ">=", ">", "(", ")", "[", "]", ".", ",", ";",
+        "+", "-", "*", "/", "%", "=", "<>", "<", "<=", ">=", ">", "(", ")", "[", "]", ".", ",",
+        ";", ":", ":=",
     ]
 }
 
@@ -34,4 +35,3 @@ pub fn get_predefined_identifiers<'a>() -> Vec<&'a str> {
         "Boolean", "false", "true", "integer", "real", "string", "size", "read", "writeln",
     ]
 }
-

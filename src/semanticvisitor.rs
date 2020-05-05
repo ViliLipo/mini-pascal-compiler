@@ -2,15 +2,27 @@ use crate::ast::*;
 use crate::symboltable::get_symbol_table;
 use crate::symboltable::Entry;
 use crate::symboltable::Symboltable;
+use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
 
-enum OpKind {
+pub enum OpKind {
     Addition,
     NumArithmetic,
     Modulo,
     Relational,
     BoolArithmetic,
     E,
+}
+
+pub fn string_as_opkind(op: &String) -> OpKind {
+    match op.as_str() {
+        "+" => OpKind::Addition,
+        "-" | "/" | "*" => OpKind::NumArithmetic,
+        "%" => OpKind::Modulo,
+        "="| "<>"| "<"| "<="| ">="| ">" => OpKind::Relational,
+        "or" | "and"  => OpKind::BoolArithmetic,
+        _ => OpKind::E,
+    }
 }
 
 pub struct SemanticVisitor {
@@ -37,20 +49,10 @@ impl SemanticVisitor {
         text
     }
 
-    fn string_as_opkind(op: &String) -> OpKind {
-        match op.as_str() {
-            "+" => OpKind::Addition,
-            "-" | "/" | "*" => OpKind::NumArithmetic,
-            "%" => OpKind::Modulo,
-            "="| "<>"| "<"| "<="| ">="| ">" => OpKind::Relational,
-            "or" | "and"  => OpKind::BoolArithmetic,
-            _ => OpKind::E,
-        }
-    }
 
     fn numeric_expression(&mut self, node: &mut Expression, type_str: String) {
         let op = node.get_token().lexeme.clone();
-        let opkind = SemanticVisitor::string_as_opkind(&op);
+        let opkind = string_as_opkind(&op);
         match opkind {
             OpKind::NumArithmetic | OpKind::Addition => {
                 node.set_type(type_str.clone())
@@ -76,7 +78,7 @@ impl SemanticVisitor {
 
     fn string_expression(&mut self, node: &mut Expression) {
         let op = node.get_token().lexeme.clone();
-        let opkind = SemanticVisitor::string_as_opkind(&op);
+        let opkind = string_as_opkind(&op);
         match opkind {
             OpKind::Addition => {
                 node.set_type(String::from("string"));
@@ -93,7 +95,7 @@ impl SemanticVisitor {
 
     fn bool_expression(&mut self, node: &mut Expression) {
         let op = node.get_token().lexeme.clone();
-        let opkind = SemanticVisitor::string_as_opkind(&op);
+        let opkind = string_as_opkind(&op);
         match opkind {
             OpKind::Relational => {
                 node.set_type(String::from("Boolean"));
@@ -219,11 +221,11 @@ impl Visitor for SemanticVisitor {
         }
     }
     fn visit_literal(&mut self, node: &mut Literal) {
-        match node.get_token().t_type.as_str() {
-            "string_literal" => node.set_type(String::from("string")),
-            "real_literal" => node.set_type(String::from("real")),
-            "integer_literal" => node.set_type(String::from("integer")),
-            _ => println!("{}", node.get_token().t_type),
+        match node.get_token().token_kind {
+            TokenKind::StringLiteral => node.set_type(String::from("string")),
+            TokenKind::RealLiteral => node.set_type(String::from("real")),
+            TokenKind::IntegerLiteral => node.set_type(String::from("integer")),
+            _ => (),
         }
         let addr = self.get_register_id();
         node.set_result_addr(addr);
