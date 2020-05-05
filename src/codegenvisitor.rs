@@ -30,6 +30,7 @@ impl CodeGenVisitor {
         match source_type.as_str() {
             "integer" | "Boolean" => String::from("int"),
             "real" => String::from("double"),
+            "string" => String::from("char"),
             _ => String::new(),
         }
     }
@@ -47,6 +48,15 @@ impl CodeGenVisitor {
     pub fn get_output(&self) -> String {
         self.declaration_buffer.clone() + self.buffer.as_str()
     }
+
+    fn get_lhs_text_for_item(source_type: String, item_id: String) -> String {
+        if source_type.as_str() == "string" {
+            format!("char {}[256]", item_id)
+        } else {
+            let t = CodeGenVisitor::type_conversion(source_type);
+            format!("{} {}", t, item_id.clone())
+        }
+    }
 }
 
 impl Visitor for CodeGenVisitor {
@@ -57,6 +67,7 @@ impl Visitor for CodeGenVisitor {
     }
     fn visit_program(&mut self, node: &mut Program) {
         self.declaration_buffer.push_str("#include <stdio.h>\n");
+        self.declaration_buffer.push_str("#include <string.h>\n");
         self.declaration_buffer.push_str("int main() {\n");
         self.symboltable.enter_scope_with_number(1);
         for child in node.get_children() {
@@ -73,6 +84,7 @@ impl Visitor for CodeGenVisitor {
         }
         self.symboltable.exit_scope()
     }
+
     fn visit_declaration(&mut self, node: &mut Declaration) {
         for child in node.get_children() {
             child.accept(self);
@@ -80,9 +92,10 @@ impl Visitor for CodeGenVisitor {
         if let Some(id_child) = node.get_id_child() {
             let id = id_child.get_token().lexeme;
             if let Some(type_child) = node.get_type_child() {
-                let t = CodeGenVisitor::type_conversion(type_child.get_token().lexeme);
+                let t = type_child.get_token().lexeme.clone();
                 let target_id = id_child.get_result_addr();
-                let text = format!("{} {};\n", t, target_id.clone());
+                let lhs_text = CodeGenVisitor::get_lhs_text_for_item(t, target_id.clone());
+                let text = format!("{};\n", lhs_text);
                 self.declaration_buffer.push_str(text.as_str());
                 if let Some(old_entry) = self.symboltable.lookup(&id) {
                     let mut new_entry: Entry = old_entry.clone();
@@ -100,8 +113,13 @@ impl Visitor for CodeGenVisitor {
             let target_addr = id_child.get_result_addr();
             if let Some(val_child) = node.get_rhs_child() {
                 let value_addr = val_child.get_result_addr();
-                let text = format!("{} = {};\n", target_addr, value_addr);
-                self.buffer.push_str(text.as_str());
+                if val_child.get_type().as_str() == "string" {
+                    let text = format!("strcpy({}, {});\n", target_addr, value_addr);
+                    self.buffer.push_str(text.as_str());
+                } else {
+                    let text = format!("{} = {};\n", target_addr, value_addr);
+                    self.buffer.push_str(text.as_str());
+                }
             }
         }
     }
@@ -115,18 +133,35 @@ impl Visitor for CodeGenVisitor {
                 let lhs_addr = lhs_child.get_result_addr();
                 let rhs_addr = rhs_child.get_result_addr();
                 let result_addr = node.get_result_addr();
-                node.set_result_addr(result_addr.clone());
-                let type_id = CodeGenVisitor::type_conversion(node.get_type());
-                let decl_text = format!("{} {};\n", type_id, result_addr.clone());
-                let text = format!(
-                    "{} = {} {} {};\n",
-                    result_addr, lhs_addr, op, rhs_addr
-                );
-                self.buffer.push_str(text.as_str());
+                let lhs_type = lhs_child.get_type();
+                let type_id = node.get_type();
+                let lhs_text = CodeGenVisitor::get_lhs_text_for_item(type_id, result_addr.clone());
+                let decl_text = format!("{};\n", lhs_text);
                 self.declaration_buffer.push_str(decl_text.as_str());
+                match lhs_type.as_str() {
+                    "integer" | "real" => {
+                        let text = format!("{} = {} {} {};\n", result_addr, lhs_addr, op, rhs_addr);
+                        self.buffer.push_str(text.as_str());
+                    }
+                    "string" => match op.clone().as_str() {
+                        "+" => {
+                            let text = format!(
+                                "strcpy({},{});\nstrcat({},{});\n",
+                                result_addr.clone(),
+                                lhs_addr,
+                                result_addr,
+                                rhs_addr,
+                            );
+                            self.buffer.push_str(text.as_str());
+                        }
+                        _ => (),
+                    },
+                    _ => (),
+                }
             }
         }
     }
+
     fn visit_variable(&mut self, node: &mut Variable) {
         let lex = node.get_token().lexeme.clone();
         if let Some(entry) = self.symboltable.lookup(&lex) {
@@ -136,11 +171,11 @@ impl Visitor for CodeGenVisitor {
     }
     fn visit_literal(&mut self, node: &mut Literal) {
         let lit_type = node.get_type();
-        let target_type = CodeGenVisitor::type_conversion(lit_type);
         let lit_value = node.get_token().lexeme;
         let addr = node.get_result_addr();
         node.set_result_addr(addr.clone());
-        let text = format!("{} {} = {};\n", target_type, addr, lit_value);
+        let lhs_text = CodeGenVisitor::get_lhs_text_for_item(lit_type, addr);
+        let text = format!("{} = {};\n", lhs_text, lit_value);
         self.declaration_buffer.push_str(text.as_str());
     }
 

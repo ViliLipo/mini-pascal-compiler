@@ -1,0 +1,7 @@
+program strops;
+begin
+  var s: string;
+  s := "YOLO";
+  s := s + " SWAG";
+  writeln(s);
+end.

@@ -4,6 +4,15 @@ use crate::symboltable::Entry;
 use crate::symboltable::Symboltable;
 use crate::visitor::Visitor;
 
+enum OpKind {
+    Addition,
+    NumArithmetic,
+    Modulo,
+    Relational,
+    BoolArithmetic,
+    E,
+}
+
 pub struct SemanticVisitor {
     symboltable: Symboltable,
     pub errors: Vec<String>,
@@ -21,13 +30,82 @@ impl SemanticVisitor {
     pub fn get_symbol_table(&self) -> Symboltable {
         self.symboltable.clone()
     }
-}
 
-impl SemanticVisitor {
     fn get_register_id(&mut self) -> String {
         let text = String::from(format!("r{}", self.register_number));
         self.register_number = self.register_number + 1;
         text
+    }
+
+    fn string_as_opkind(op: &String) -> OpKind {
+        match op.as_str() {
+            "+" => OpKind::Addition,
+            "-" | "/" | "*" => OpKind::NumArithmetic,
+            "%" => OpKind::Modulo,
+            "="| "<>"| "<"| "<="| ">="| ">" => OpKind::Relational,
+            "or" | "and"  => OpKind::BoolArithmetic,
+            _ => OpKind::E,
+        }
+    }
+
+    fn numeric_expression(&mut self, node: &mut Expression, type_str: String) {
+        let op = node.get_token().lexeme.clone();
+        let opkind = SemanticVisitor::string_as_opkind(&op);
+        match opkind {
+            OpKind::NumArithmetic | OpKind::Addition => {
+                node.set_type(type_str.clone())
+            },
+            OpKind::Modulo => {
+                if type_str.as_str() != "integer" {
+                    self.errors.push(String::from(
+                            "Modulo is applicable only to integers"));
+                    node.set_type(String::from("Error"));
+                } else {
+                    node.set_type(type_str.clone());
+                }
+            },
+            OpKind::Relational => {
+                node.set_type(String::from("Boolean"));
+            },
+            _ => {
+                    self.errors.push(format!("Bad OP {} for numeric types", op));
+                    node.set_type(String::from("Error"));
+            }
+        }
+    }
+
+    fn string_expression(&mut self, node: &mut Expression) {
+        let op = node.get_token().lexeme.clone();
+        let opkind = SemanticVisitor::string_as_opkind(&op);
+        match opkind {
+            OpKind::Addition => {
+                node.set_type(String::from("string"));
+            },
+            OpKind::Relational => {
+                node.set_type(String::from("Boolean"));
+            },
+            _ => {
+                self.errors.push(format!("Operator {} does not apply to strings", op));
+                node.set_type(String::from("Error"));
+            },
+        }
+    }
+
+    fn bool_expression(&mut self, node: &mut Expression) {
+        let op = node.get_token().lexeme.clone();
+        let opkind = SemanticVisitor::string_as_opkind(&op);
+        match opkind {
+            OpKind::Relational => {
+                node.set_type(String::from("Boolean"));
+            },
+            OpKind::BoolArithmetic => {
+                node.set_type(String::from("Boolean"));
+            },
+            _ => {
+                self.errors.push(format!("Operator {} does not apply to strings", op));
+                node.set_type(String::from("Error"));
+            },
+        }
     }
 }
 
@@ -102,6 +180,8 @@ impl Visitor for SemanticVisitor {
             }
         }
     }
+
+    // TODO: fix operator type relation
     fn visit_expression(&mut self, node: &mut Expression) {
         for child in node.get_children() {
             child.accept(self);
@@ -119,12 +199,11 @@ impl Visitor for SemanticVisitor {
                         tl, tr
                     )));
                 } else {
-                    match shared_node.get_token().t_type.as_str() {
-                        "+"| "-"| "/" | "*" => node.set_type(String::from(tl)),
-                        "<" | "<=" | ">" | ">=" | "="  => node.set_type(String::from("Boolean")),
-                        _ => {
-                            self.errors.push(String::from("Unsupported operator"))
-                        }
+                    match tl.as_str() {
+                        "integer" | "real" => self.numeric_expression(node, tl),
+                        "Boolean" => self.bool_expression(node),
+                        "string" => self.string_expression(node),
+                        _ => (),
                     }
                 }
             }
@@ -164,7 +243,8 @@ impl Visitor for SemanticVisitor {
             let cond_type = condition.get_type();
             println!("Cond type{}", cond_type);
             if cond_type.as_str() != "Boolean" {
-                self.errors.push(String::from("Non Boolean expression in an if statement"));
+                self.errors
+                    .push(String::from("Non Boolean expression in an if statement"));
             }
         }
     }
@@ -177,7 +257,8 @@ impl Visitor for SemanticVisitor {
             let cond_type = condition.get_type();
             println!("Cond type{}", cond_type);
             if cond_type.as_str() != "Boolean" {
-                self.errors.push(String::from("Non Boolean expression in an if statement"));
+                self.errors
+                    .push(String::from("Non Boolean expression in an if statement"));
             }
         }
     }

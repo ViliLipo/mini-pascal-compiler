@@ -528,12 +528,14 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             type_id: String::new(),
             result_addr: String::new(),
         }),
-        "+" | "-" | "*" | "/" | "<" | ">" | "<=" | ">=" | "=" => Box::from(Expression {
-            token,
-            children: Vec::new(),
-            type_id: String::new(),
-            result_addr: String::new(),
-        }),
+        "+" | "-" | "*" | "/" | "%" | "<" | ">" | "<=" | ">=" | "=" | "or" | "and" => {
+            Box::from(Expression {
+                token,
+                children: Vec::new(),
+                type_id: String::new(),
+                result_addr: String::new(),
+            })
+        }
         "if" => Box::from(IfNode {
             token,
             children: Vec::new(),

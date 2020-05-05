@@ -253,7 +253,7 @@ impl Parser {
         // TODO: Sign and add addition operator types
         match self.term() {
             Some(term_node) => match self.current_token.t_type.as_str() {
-                "+" | "-" => {
+                "+" | "-" | "or" => {
                     let mut expr_node = make_node(self.current_token.clone(), "");
                     self.next_token();
                     expr_node.add_child(term_node);
@@ -274,7 +274,7 @@ impl Parser {
     fn term(&mut self) -> Option<Box<dyn Node>> {
         match self.factor() {
             Some(lhs_node) => match self.current_token.t_type.as_str() {
-                "*" | "/" => {
+                "*" | "/" | "%" | "and" => {
                     let mut term_node = make_node(self.current_token.clone(), "");
                     self.next_token();
                     term_node.add_child(lhs_node);
