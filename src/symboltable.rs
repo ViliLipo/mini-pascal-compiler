@@ -1,9 +1,24 @@
 use std::collections::HashMap;
 
 
+
+pub enum ConstructCategory {
+    SimpleVar,
+    ArrayVar,
+    Function,
+    TypeId,
+}
+
+impl Copy for ConstructCategory {}
+impl Clone for ConstructCategory {
+    fn clone(&self) -> ConstructCategory {
+        *self
+    }
+}
+
 pub struct Entry {
     pub name: String,
-    pub category: String,
+    pub category: ConstructCategory,
     pub value: String,
     pub entry_type: String,
     pub scope_number: i32,
@@ -165,7 +180,7 @@ fn predefined_ids() -> Vec<Entry> {
     let mut entries = Vec::new();
     entries.push(Entry {
         name: String::from("Boolean"),
-        category: String::from("type"),
+        category: ConstructCategory::TypeId,
         value: String::from("0"),
         entry_type: String::from("type"),
         scope_number: 0,
@@ -173,7 +188,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("integer"),
-        category: String::from("type"),
+        category: ConstructCategory::TypeId,
         value: String::from("0"),
         entry_type: String::from("type"),
         scope_number: 0,
@@ -181,7 +196,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("real"),
-        category: String::from("type"),
+        category: ConstructCategory::TypeId,
         value: String::from("0"),
         entry_type: String::from("type"),
         scope_number: 0,
@@ -189,7 +204,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("string"),
-        category: String::from("type"),
+        category: ConstructCategory::TypeId,
         value: String::from(""),
         entry_type: String::from("type"),
         scope_number: 0,
@@ -197,7 +212,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("false"),
-        category: String::from("value"),
+        category: ConstructCategory::SimpleVar,
         value: String::from("0"),
         entry_type: String::from("Boolean"),
         scope_number: 0,
@@ -205,7 +220,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("true"),
-        category: String::from("value"),
+        category: ConstructCategory::SimpleVar,
         value: String::from("1"),
         entry_type: String::from("Boolean"),
         scope_number: 0,
@@ -213,7 +228,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("writeln"),
-        category: String::from("function"),
+        category: ConstructCategory::Function,
         value: String::from(""),
         entry_type: String::from("function"),
         scope_number: 0,
@@ -221,7 +236,7 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("read"),
-        category: String::from("function"),
+        category: ConstructCategory::Function,
         value: String::from(""),
         entry_type: String::from("function"),
         scope_number: 0,

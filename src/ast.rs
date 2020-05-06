@@ -1,7 +1,69 @@
 use crate::scanner::Token;
 use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
+use std::fmt;
 use std::any::Any;
+
+#[derive(Debug)]
+pub enum NodeType {
+    Simple(String),
+    ArrayOf(String),
+    Unit,
+}
+
+impl NodeType {
+    fn to_string(&self) -> String {
+        match self {
+            NodeType::Simple(s) => format!("Simple: {}", s),
+            NodeType::ArrayOf(s) => format!("Array of: {}", s),
+            NodeType::Unit => format!("Unit"),
+        }
+    }
+
+}
+
+impl fmt::Display for NodeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+
+impl PartialEq for NodeType {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            NodeType::Simple(s) => {
+                match other {
+                    NodeType::Simple(s2) => s == s2,
+                    _ => false,
+                }
+            },
+            NodeType::ArrayOf(s) => {
+                match other {
+                    NodeType::ArrayOf(s2) => s == s2,
+                    _ => false,
+                }
+            },
+            NodeType::Unit => {
+                match other {
+                    NodeType::Unit => true,
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
+
+impl Clone for NodeType {
+    fn clone(&self) -> NodeType {
+        match self {
+            NodeType::Unit => NodeType::Unit,
+            NodeType::ArrayOf(s) => NodeType::ArrayOf(s.clone()),
+            NodeType::Simple(s) => NodeType::Simple(s.clone()),
+        }
+    }
+}
 
 pub trait Node {
     fn get_token(&self) -> Token;
@@ -9,8 +71,8 @@ pub trait Node {
     fn add_child(&mut self, child: Box<dyn Node>);
     fn accept(&mut self, visitor: &mut dyn Visitor);
     fn as_any(&self) -> &dyn Any;
-    fn get_type(&self) -> String;
-    fn set_type(&mut self, type_id: String);
+    fn get_type(&self) -> NodeType;
+    fn set_type(&mut self, node_type: NodeType);
     fn get_result_addr(&self) -> String;
     fn set_result_addr(&mut self, address: String);
 }
@@ -36,11 +98,11 @@ impl Node for Program {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("integer")
+    fn get_type(&self) -> NodeType {
+        NodeType::Simple(String::from("integer"))
     }
     fn get_result_addr(&self) -> String {
         String::new()
@@ -71,6 +133,23 @@ impl Declaration {
     pub fn get_type_child(&self) -> Option<&Variable> {
         self.get_child(1)
     }
+
+    pub fn get_array_type_len_child_as_node(&mut self) -> Option<&mut Box<dyn Node>> {
+        match self.children.get_mut(2) {
+            Some(child) => Some(child),
+            None => None,
+        }
+    }
+
+    pub fn get_array_type_len_child(&self) -> Option<&Expression> {
+        match self.children.get(2) {
+            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Expression>() {
+                Some(expr) => Some(expr),
+                None => None,
+            },
+            None => None,
+        }
+    }
 }
 
 impl Node for Declaration {
@@ -89,11 +168,11 @@ impl Node for Declaration {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn get_result_addr(&self) -> String {
         String::new()
@@ -135,11 +214,11 @@ impl Node for Block {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn get_result_addr(&self) -> String {
         String::new()
@@ -187,11 +266,11 @@ impl Node for Assignment {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn get_result_addr(&self) -> String {
         String::new()
@@ -204,7 +283,7 @@ impl Node for Assignment {
 pub struct Expression {
     token: Token,
     children: Vec<Box<dyn Node>>,
-    type_id: String,
+    type_id: NodeType,
     result_addr: String,
 }
 
@@ -233,12 +312,13 @@ impl Node for Expression {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, type_id: String) {
+    fn set_type(&mut self, type_id: NodeType) {
         self.type_id = type_id;
     }
-    fn get_type(&self) -> String {
+    fn get_type(&self) -> NodeType {
         self.type_id.clone()
     }
+
     fn set_result_addr(&mut self, addr: String) {
         self.result_addr = addr;
     }
@@ -250,9 +330,19 @@ impl Node for Expression {
 pub struct Variable {
     token: Token,
     children: Vec<Box<dyn Node>>,
-    type_id: String,
+    type_id: NodeType,
     result_addr: String,
 }
+
+impl Variable {
+    pub fn has_index(&self) -> bool {
+        self.children.len() > 0
+    }
+    pub fn get_index_child(&self) -> Option<&Box<dyn Node>> {
+        self.children.get(0)
+    }
+}
+
 impl Node for Variable {
     fn get_token(&self) -> Token {
         self.token.clone()
@@ -269,10 +359,10 @@ impl Node for Variable {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, type_id: String) {
+    fn set_type(&mut self, type_id: NodeType) {
         self.type_id = type_id;
     }
-    fn get_type(&self) -> String {
+    fn get_type(&self) -> NodeType {
         self.type_id.clone()
     }
     fn set_result_addr(&mut self, addr: String) {
@@ -286,7 +376,7 @@ impl Node for Variable {
 pub struct Literal {
     token: Token,
     children: Vec<Box<dyn Node>>,
-    type_id: String,
+    type_id: NodeType,
     result_addr: String,
 }
 
@@ -306,10 +396,10 @@ impl Node for Literal {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, type_id: String) {
+    fn set_type(&mut self, type_id: NodeType) {
         self.type_id = type_id;
     }
-    fn get_type(&self) -> String {
+    fn get_type(&self) -> NodeType {
         self.type_id.clone()
     }
     fn set_result_addr(&mut self, addr: String) {
@@ -323,7 +413,7 @@ impl Node for Literal {
 pub struct Call {
     token: Token,
     children: Vec<Box<dyn Node>>,
-    type_id: String,
+    type_id: NodeType,
     result_addr: String,
 }
 
@@ -343,10 +433,10 @@ impl Node for Call {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, type_id: String) {
+    fn set_type(&mut self, type_id: NodeType) {
         self.type_id = type_id;
     }
-    fn get_type(&self) -> String {
+    fn get_type(&self) -> NodeType {
         self.type_id.clone()
     }
     fn set_result_addr(&mut self, addr: String) {
@@ -390,11 +480,11 @@ impl Node for IfNode {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("If statement")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn set_result_addr(&mut self, _addr: String) {
         ()
@@ -435,11 +525,11 @@ impl Node for WhileNode {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("If statement")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn set_result_addr(&mut self, _addr: String) {
         ()
@@ -471,11 +561,11 @@ impl Node for ErrorNode {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn set_type(&mut self, _type_id: String) {
+    fn set_type(&mut self, _type_id: NodeType) {
         ()
     }
-    fn get_type(&self) -> String {
-        String::from("Error")
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
     }
     fn set_result_addr(&mut self, _addr: String) {
         ()
@@ -510,7 +600,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
                 Box::from(Variable {
                     token,
                     children: Vec::new(),
-                    type_id: String::new(),
+                    type_id: NodeType::Unit,
                     result_addr: String::new(),
                 })
             } else {
@@ -518,7 +608,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
                 Box::from(Call {
                     token,
                     children: Vec::new(),
-                    type_id: String::new(),
+                    type_id: NodeType::Unit,
                     result_addr: String::new(),
                 })
             }
@@ -527,7 +617,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             Box::from(Literal {
                 token,
                 children: Vec::new(),
-                type_id: String::new(),
+                type_id: NodeType::Unit,
                 result_addr: String::new(),
             })
         }
@@ -545,7 +635,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
         | TokenKind::And => Box::from(Expression {
             token,
             children: Vec::new(),
-            type_id: String::new(),
+            type_id: NodeType::Unit,
             result_addr: String::new(),
         }),
         TokenKind::If => Box::from(IfNode {

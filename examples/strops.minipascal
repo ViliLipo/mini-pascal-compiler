@@ -1,12 +1,7 @@
 program strops;
 begin
-  var s: string;
-  s := "YOLO";
-  s := s + " SWAG";
-  var a: string;
-  var b: string;
-  a := "AASI";
-  b := "KOIRA"; 
-  writeln(s);
-  writeln(a < b);
+  if (1 = 1) and ( 5 > 4)  then
+    writeln("Jeboii")
+  else
+    writeln("Nahbro")
 end.

@@ -2,22 +2,23 @@
 #include <string.h>
 int booltmp = 0;
 int main() {
-char r0[256];
-char r1[256] = "YOLO";
-char r2[256] = " SWAG";
-char r3[256];
-char r4[256];
-char r5[256];
-char r6[256] = "AASI";
-char r7[256] = "KOIRA";
-int r8;
-strcpy(r0, r1);
-strcpy(r3,r0);
-strcat(r3,r2);
-strcpy(r0, r3);
-strcpy(r4, r6);
-strcpy(r5, r7);
-printf("%s\n", r0);
-printf("\n", r8);
+int r0 = 1;
+int r1 = 1;
+int r2;
+int r3 = 5;
+int r4 = 4;
+int r5;
+int r6;
+char r7[256] = "Jeboii";
+char r8[256] = "Nahbro";
+r2 = r0 == r1;
+r5 = r3 > r4;
+r6 = r2 & r5;
+if (r6 != 1 ) { goto label0; }
+printf("%s\n", r7);
+goto label1;
+label0:
+printf("%s\n", r8);
+label1:
 return 0;
 }

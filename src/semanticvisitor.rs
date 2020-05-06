@@ -1,8 +1,10 @@
+use crate::ast::NodeType;
 use crate::ast::*;
+use crate::scanner::TokenKind;
 use crate::symboltable::get_symbol_table;
+use crate::symboltable::ConstructCategory;
 use crate::symboltable::Entry;
 use crate::symboltable::Symboltable;
-use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
 
 pub enum OpKind {
@@ -19,8 +21,8 @@ pub fn string_as_opkind(op: &String) -> OpKind {
         "+" => OpKind::Addition,
         "-" | "/" | "*" => OpKind::NumArithmetic,
         "%" => OpKind::Modulo,
-        "="| "<>"| "<"| "<="| ">="| ">" => OpKind::Relational,
-        "or" | "and"  => OpKind::BoolArithmetic,
+        "=" | "<>" | "<" | "<=" | ">=" | ">" => OpKind::Relational,
+        "or" | "and" => OpKind::BoolArithmetic,
         _ => OpKind::E,
     }
 }
@@ -49,29 +51,29 @@ impl SemanticVisitor {
         text
     }
 
-
-    fn numeric_expression(&mut self, node: &mut Expression, type_str: String) {
+    fn numeric_expression(&mut self, node: &mut Expression, node_type: NodeType) {
         let op = node.get_token().lexeme.clone();
         let opkind = string_as_opkind(&op);
         match opkind {
-            OpKind::NumArithmetic | OpKind::Addition => {
-                node.set_type(type_str.clone())
-            },
-            OpKind::Modulo => {
-                if type_str.as_str() != "integer" {
-                    self.errors.push(String::from(
-                            "Modulo is applicable only to integers"));
-                    node.set_type(String::from("Error"));
-                } else {
-                    node.set_type(type_str.clone());
+            OpKind::NumArithmetic | OpKind::Addition => node.set_type(node_type.clone()),
+            OpKind::Modulo => match node_type {
+                NodeType::Simple(type_str) => {
+                    if type_str.as_str() != "integer" {
+                        self.errors
+                            .push(String::from("Modulo is applicable only to integers"));
+                        node.set_type(NodeType::Unit);
+                    } else {
+                        node.set_type(NodeType::Simple(String::from("integer")));
+                    }
                 }
+                _ => (),
             },
             OpKind::Relational => {
-                node.set_type(String::from("Boolean"));
-            },
+                node.set_type(NodeType::Simple(String::from("Boolean")));
+            }
             _ => {
-                    self.errors.push(format!("Bad OP {} for numeric types", op));
-                    node.set_type(String::from("Error"));
+                self.errors.push(format!("Bad OP {} for numeric types", op));
+                node.set_type(NodeType::Simple(String::from("Error")));
             }
         }
     }
@@ -81,15 +83,16 @@ impl SemanticVisitor {
         let opkind = string_as_opkind(&op);
         match opkind {
             OpKind::Addition => {
-                node.set_type(String::from("string"));
-            },
+                node.set_type(NodeType::Simple(String::from("string")));
+            }
             OpKind::Relational => {
-                node.set_type(String::from("Boolean"));
-            },
+                node.set_type(NodeType::Simple(String::from("Boolean")));
+            }
             _ => {
-                self.errors.push(format!("Operator {} does not apply to strings", op));
-                node.set_type(String::from("Error"));
-            },
+                self.errors
+                    .push(format!("Operator {} does not apply to strings", op));
+                node.set_type(NodeType::Unit);
+            }
         }
     }
 
@@ -98,15 +101,16 @@ impl SemanticVisitor {
         let opkind = string_as_opkind(&op);
         match opkind {
             OpKind::Relational => {
-                node.set_type(String::from("Boolean"));
-            },
+                node.set_type(NodeType::Simple(String::from("Boolean")));
+            }
             OpKind::BoolArithmetic => {
-                node.set_type(String::from("Boolean"));
-            },
+                node.set_type(NodeType::Simple(String::from("Boolean")));
+            }
             _ => {
-                self.errors.push(format!("Operator {} does not apply to strings", op));
-                node.set_type(String::from("Error"));
-            },
+                self.errors
+                    .push(format!("Operator {} does not apply to strings", op));
+                node.set_type(NodeType::Unit);
+            }
         }
     }
 }
@@ -136,17 +140,30 @@ impl Visitor for SemanticVisitor {
                 let name = id_child.get_token().lexeme.clone();
                 let t = type_child.get_token().lexeme.clone();
                 if let Some(type_entry) = self.symboltable.lookup(&t) {
+                    let entry_type = type_entry.name.clone();
+                    let value = type_entry.value.clone();
                     if let Some(scope) = self.symboltable.current_scope() {
-                        let entry_type = type_entry.name.clone();
-                        let value = type_entry.value.clone();
                         let addr = self.get_register_id();
-                        let entry = Entry {
-                            name: name.clone(),
-                            category: String::from("variable"),
-                            entry_type,
-                            value,
-                            scope_number: scope.scope_number,
-                            address: addr.clone(),
+                        let entry = if let Some(len_expr) = node.get_array_type_len_child_as_node()
+                        {
+                            len_expr.accept(self);
+                            Entry {
+                                name: name.clone(),
+                                category: ConstructCategory::ArrayVar,
+                                value,
+                                scope_number: scope.scope_number,
+                                entry_type,
+                                address: addr.clone(),
+                            }
+                        } else {
+                            Entry {
+                                name: name.clone(),
+                                category: ConstructCategory::SimpleVar,
+                                entry_type,
+                                value,
+                                scope_number: scope.scope_number,
+                                address: addr.clone(),
+                            }
                         };
                         if self.symboltable.in_current_scope(&name) {
                             self.errors.push(String::from("Variable declared twice"));
@@ -168,12 +185,38 @@ impl Visitor for SemanticVisitor {
             child.accept(self);
         }
         if let Some(lhs) = node.get_lhs_child() {
-            let var_exists = self.symboltable.is_visible(&lhs.get_token().lexeme);
-            if var_exists {
+            if let Some(_entry) = self.symboltable.lookup(&lhs.get_token().lexeme) {
                 if let Some(rhs) = node.get_rhs_child() {
-                    if lhs.get_type().as_str() != rhs.get_type().as_str() {
-                        self.errors
-                            .push(String::from("Assignment to uncompatible type."));
+                    match lhs.get_type() {
+                        NodeType::Simple(lt) => match rhs.get_type() {
+                            NodeType::Simple(rt) => {
+                                if rt != lt {
+                                    self.errors.push(format!("Can't assign a {} to {}", rt, lt));
+                                }
+                            }
+                            NodeType::ArrayOf(rt) => self.errors.push(format!(
+                                "Can't assign an array of {} to simple type {}",
+                                rt, lt
+                            )),
+                            NodeType::Unit => self.errors.push(format!(
+                                "Can't assign a result of an statement to a type {}",
+                                lt
+                            )),
+                        },
+                        NodeType::ArrayOf(lt) => {
+                            match rhs.get_type() {
+                                NodeType::ArrayOf(rt) => {
+                                    if rt != lt {
+                                        self.errors
+                                            .push(format!("Can't assign a {} to {}.", rt, lt));
+                                    }
+                                } //OK
+                                _ => self.errors.push(String::from(
+                                    "Can't assign a normal value to array type",
+                                )),
+                            }
+                        }
+                        NodeType::Unit => (),
                     }
                 }
             } else {
@@ -201,30 +244,71 @@ impl Visitor for SemanticVisitor {
                         tl, tr
                     )));
                 } else {
-                    match tl.as_str() {
-                        "integer" | "real" => self.numeric_expression(node, tl),
-                        "Boolean" => self.bool_expression(node),
-                        "string" => self.string_expression(node),
-                        _ => (),
+                    match tl.clone() {
+                        NodeType::Simple(s) => match s.as_str() {
+                            "integer" | "real" => self.numeric_expression(node, tl),
+                            "Boolean" => self.bool_expression(node),
+                            "string" => self.string_expression(node),
+                            _ => (),
+                        },
+                        NodeType::ArrayOf(_s) => (),
+                        NodeType::Unit => (),
                     }
                 }
             }
         }
     }
+
     fn visit_variable(&mut self, node: &mut Variable) {
+        for child in node.get_children() {
+            child.accept(self)
+        }
         let name = node.get_token().lexeme.clone();
         if let Some(entry) = self.symboltable.lookup(&name) {
-            let type_str = entry.entry_type.clone();
-            node.set_type(type_str);
             let result_addr = entry.address.clone();
             node.set_result_addr(result_addr);
+            if node.has_index() {
+                if let ConstructCategory::ArrayVar = entry.category {
+                    if let Some(index_child) = node.get_index_child() {
+                        match index_child.get_type() {
+                            NodeType::Simple(t) => {
+                                if t.as_str() != "integer" {
+                                    self.errors
+                                        .push(format!("Array index must be of the type int"));
+                                } else {
+                                    node.set_type(NodeType::Simple(entry.entry_type.clone()))
+                                }
+                            }
+                            _ => self
+                                .errors
+                                .push(format!("Array indexes must be of the type of int")),
+                        }
+                    }
+                } else {
+                    self.errors.push(format!("Can't index a simple type"));
+                }
+            } else {
+                match entry.category {
+                    ConstructCategory::SimpleVar => {
+                        node.set_type(NodeType::Simple(entry.entry_type.clone()));
+                    }
+                    ConstructCategory::ArrayVar => {
+                        node.set_type(NodeType::ArrayOf(entry.entry_type.clone()));
+                    }
+                    _ => (),
+                }
+            }
+        } else {
+            self.errors
+                .push(format!("Reference to an undeclared variable {}", name));
         }
     }
+
     fn visit_literal(&mut self, node: &mut Literal) {
         match node.get_token().token_kind {
-            TokenKind::StringLiteral => node.set_type(String::from("string")),
-            TokenKind::RealLiteral => node.set_type(String::from("real")),
-            TokenKind::IntegerLiteral => node.set_type(String::from("integer")),
+            TokenKind::StringLiteral => node.set_type(NodeType::Simple(String::from("string"))),
+            TokenKind::RealLiteral => node.set_type(NodeType::Simple(String::from("real"))),
+            TokenKind::IntegerLiteral => node.set_type(NodeType::Simple(String::from("integer"))),
             _ => (),
         }
         let addr = self.get_register_id();
@@ -243,10 +327,11 @@ impl Visitor for SemanticVisitor {
         }
         if let Some(condition) = node.get_condition() {
             let cond_type = condition.get_type();
-            println!("Cond type{}", cond_type);
-            if cond_type.as_str() != "Boolean" {
-                self.errors
-                    .push(String::from("Non Boolean expression in an if statement"));
+            if let NodeType::Simple(t) = cond_type {
+                if t.as_str() != "Boolean" {
+                    self.errors
+                        .push(String::from("Non Boolean expression in an if statement"));
+                }
             }
         }
     }
@@ -257,10 +342,11 @@ impl Visitor for SemanticVisitor {
         }
         if let Some(condition) = node.get_condition() {
             let cond_type = condition.get_type();
-            println!("Cond type{}", cond_type);
-            if cond_type.as_str() != "Boolean" {
-                self.errors
-                    .push(String::from("Non Boolean expression in an if statement"));
+            if let NodeType::Simple(t) = cond_type {
+                if t.as_str() != "Boolean" {
+                    self.errors
+                        .push(String::from("Non Boolean expression in an if statement"));
+                }
             }
         }
     }

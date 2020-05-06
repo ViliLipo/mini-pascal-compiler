@@ -154,6 +154,7 @@ impl Parser {
         }
     }
 
+
     fn declaration_stmnt(&mut self) -> Option<Box<dyn Node>> {
         match self.match_token(TokenKind::Var) {
             Ok(mut main_node) => {
@@ -170,15 +171,38 @@ impl Parser {
                     Ok(_delim) => (),
                     Err(msg) => self.errors.push(msg),
                 };
-                match self.match_token(TokenKind::Identifier) {
-                    Ok(type_node) => {
+                match self.current_token.token_kind {
+                    TokenKind::Identifier => {
+                        let type_node = make_node(self.current_token.clone(), "");
                         main_node.add_child(type_node);
+                    },
+                    TokenKind::Array =>{
+                        self.next_token();
+                        if let TokenKind::OpenBracket = self.current_token.token_kind {
+                            self.next_token();
+                            if let Some(expr) = self.expression() {
+                            match self.match_token(TokenKind::CloseBracket) {
+                                Ok(_delim) => {
+                                    match self.match_token(TokenKind::Of) {
+                                        Ok(_delim) => {
+                                            match self.match_token(TokenKind::Identifier) {
+                                                Ok(id_node) => {
+                                                    main_node.add_child(id_node);
+                                                    main_node.add_child(expr);
+                                                },
+                                                Err(msg) => self.errors.push(msg),
+                                            }
+                                        },
+                                        Err(msg) => self.errors.push(msg),
+                                    }
+                                },
+                                Err(msg) => self.errors.push(msg),
+                            }
+                            }
+                        }
                     }
-                    Err(msg) => {
-                        self.errors.push(msg);
-                        return None;
+                    _ => self.errors.push(String::from("No type given")),
                     }
-                };
                 Some(main_node)
             }
             Err(msg) => {
@@ -299,8 +323,8 @@ impl Parser {
 
     fn factor(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
-            TokenKind::Identifier
-            | TokenKind::RealLiteral
+            TokenKind::Identifier => self.variable(),
+            TokenKind::RealLiteral
             | TokenKind::StringLiteral
             | TokenKind::IntegerLiteral => {
                 let node = make_node(self.current_token.clone(), "");
@@ -323,13 +347,34 @@ impl Parser {
         }
     }
 
+    fn variable(&mut self) -> Option<Box<dyn Node>> {
+        match self.current_token.token_kind {
+            TokenKind::Identifier => {
+                let old_token = self.current_token.clone();
+                let mut node = make_node(old_token, "");
+                self.next_token();
+                if let  TokenKind::OpenSquareBracket = self.current_token.token_kind {
+                        self.next_token();
+                        if let Some(expr) = self.expression() {
+                            node.add_child(expr);
+                        }
+                        match self.match_token(TokenKind::CloseSquareBracket) {
+                            Ok(_delim) => (),
+                            Err(msg) => self.errors.push(msg),
+                        }
+                }
+                Some(node)
+            }
+            _ => None,
+        }
+    }
+
     fn arguments(&mut self) -> Option<Box<dyn Node>> {
         match self.expression() {
             Some(expr_node) => Some(expr_node),
             None => None,
         }
     }
-
 }
 
 pub fn build_parser(scanner: Scanner) -> Parser {
