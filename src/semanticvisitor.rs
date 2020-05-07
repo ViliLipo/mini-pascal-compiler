@@ -122,6 +122,17 @@ impl Visitor for SemanticVisitor {
         }
     }
     fn visit_program(&mut self, node: &mut Program) {
+        if let Some(name_child) = node.get_id_child() {
+            let prog_id = name_child.get_token().lexeme.clone();
+            self.symboltable.add_entry(Entry {
+                name: prog_id,
+                category: ConstructCategory::Program,
+                entry_type: String::from("integer"),
+                value: String::from("PROGRAM"),
+                scope_number: 0,
+                address: String::from(""),
+            });
+        }
         for child in node.get_children() {
             child.accept(self);
         }
@@ -135,6 +146,7 @@ impl Visitor for SemanticVisitor {
         self.symboltable.exit_scope()
     }
     fn visit_declaration(&mut self, node: &mut Declaration) {
+        println!("visit declaration");
         if let Some(id_child) = node.get_id_child() {
             if let Some(type_child) = node.get_type_child() {
                 let name = id_child.get_token().lexeme.clone();
@@ -144,7 +156,7 @@ impl Visitor for SemanticVisitor {
                     let value = type_entry.value.clone();
                     if let Some(scope) = self.symboltable.current_scope() {
                         let addr = self.get_register_id();
-                        let entry = if let Some(len_expr) = node.get_array_type_len_child_as_node()
+                        let entry = if let Some(len_expr) = node.get_array_type_len_child()
                         {
                             len_expr.accept(self);
                             Entry {
@@ -179,7 +191,11 @@ impl Visitor for SemanticVisitor {
                 }
             }
         }
+        for child in node.get_children() {
+            child.accept(self);
+        }
     }
+
     fn visit_assignment(&mut self, node: &mut Assignment) {
         for child in node.get_children() {
             child.accept(self);
@@ -268,6 +284,7 @@ impl Visitor for SemanticVisitor {
             let result_addr = entry.address.clone();
             node.set_result_addr(result_addr);
             if node.has_index() {
+                println!("has index");
                 if let ConstructCategory::ArrayVar = entry.category {
                     if let Some(index_child) = node.get_index_child() {
                         match index_child.get_type() {
@@ -276,7 +293,8 @@ impl Visitor for SemanticVisitor {
                                     self.errors
                                         .push(format!("Array index must be of the type int"));
                                 } else {
-                                    node.set_type(NodeType::Simple(entry.entry_type.clone()))
+                                    println!("Found indexed array var");
+                                    node.set_type(NodeType::Simple(entry.entry_type.clone()));
                                 }
                             }
                             _ => self

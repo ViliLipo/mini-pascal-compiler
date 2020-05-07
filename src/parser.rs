@@ -154,7 +154,6 @@ impl Parser {
         }
     }
 
-
     fn declaration_stmnt(&mut self) -> Option<Box<dyn Node>> {
         match self.match_token(TokenKind::Var) {
             Ok(mut main_node) => {
@@ -175,34 +174,34 @@ impl Parser {
                     TokenKind::Identifier => {
                         let type_node = make_node(self.current_token.clone(), "");
                         main_node.add_child(type_node);
-                    },
-                    TokenKind::Array =>{
+                    }
+                    TokenKind::Array => {
                         self.next_token();
-                        if let TokenKind::OpenBracket = self.current_token.token_kind {
+                        if let TokenKind::OpenSquareBracket = self.current_token.token_kind {
                             self.next_token();
                             if let Some(expr) = self.expression() {
-                            match self.match_token(TokenKind::CloseBracket) {
-                                Ok(_delim) => {
-                                    match self.match_token(TokenKind::Of) {
+                                match self.match_token(TokenKind::CloseSquareBracket) {
+                                    Ok(_delim) => match self.match_token(TokenKind::Of) {
                                         Ok(_delim) => {
                                             match self.match_token(TokenKind::Identifier) {
                                                 Ok(id_node) => {
                                                     main_node.add_child(id_node);
                                                     main_node.add_child(expr);
-                                                },
+                                                }
                                                 Err(msg) => self.errors.push(msg),
                                             }
-                                        },
+                                        }
                                         Err(msg) => self.errors.push(msg),
-                                    }
-                                },
-                                Err(msg) => self.errors.push(msg),
+                                    },
+                                    Err(msg) => self.errors.push(msg),
+                                }
                             }
-                            }
+                        } else {
+                            self.errors.push(format!("No size found in array type"));
                         }
                     }
                     _ => self.errors.push(String::from("No type given")),
-                    }
+                }
                 Some(main_node)
             }
             Err(msg) => {
@@ -213,12 +212,9 @@ impl Parser {
     }
 
     fn assign_or_call_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        match self.match_token(TokenKind::Identifier) {
-            Err(msg) => {
-                self.errors.push(msg);
-                None
-            }
-            Ok(id_node) => match self.current_token.token_kind {
+        match self.variable() {
+            None=> None,
+            Some(id_node) => match self.current_token.token_kind {
                 TokenKind::Assign => {
                     let mut main_node = make_node(self.current_token.clone(), "");
                     self.next_token();
@@ -324,9 +320,7 @@ impl Parser {
     fn factor(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
             TokenKind::Identifier => self.variable(),
-            TokenKind::RealLiteral
-            | TokenKind::StringLiteral
-            | TokenKind::IntegerLiteral => {
+            TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
                 let node = make_node(self.current_token.clone(), "");
                 self.next_token();
                 Some(node)
@@ -353,15 +347,15 @@ impl Parser {
                 let old_token = self.current_token.clone();
                 let mut node = make_node(old_token, "");
                 self.next_token();
-                if let  TokenKind::OpenSquareBracket = self.current_token.token_kind {
-                        self.next_token();
-                        if let Some(expr) = self.expression() {
-                            node.add_child(expr);
-                        }
-                        match self.match_token(TokenKind::CloseSquareBracket) {
-                            Ok(_delim) => (),
-                            Err(msg) => self.errors.push(msg),
-                        }
+                if let TokenKind::OpenSquareBracket = self.current_token.token_kind {
+                    self.next_token();
+                    if let Some(expr) = self.expression() {
+                        node.add_child(expr);
+                    }
+                    match self.match_token(TokenKind::CloseSquareBracket) {
+                        Ok(_delim) => (),
+                        Err(msg) => self.errors.push(msg),
+                    }
                 }
                 Some(node)
             }

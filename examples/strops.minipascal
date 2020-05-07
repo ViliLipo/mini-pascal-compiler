@@ -1,7 +1,6 @@
 program strops;
 begin
-  if (1 = 1) and ( 5 > 4)  then
-    writeln("Jeboii")
-  else
-    writeln("Nahbro")
+  var A : array[5] of integer;
+  A[2] := 10;
+  writeln(A[1 + 1]);
 end.

@@ -9,6 +9,7 @@ pub struct CodeGenVisitor {
     symboltable: Symboltable,
     buffer: String,
     declaration_buffer: String,
+    free_buffer: String,
     label_no: u32,
 }
 
@@ -18,6 +19,7 @@ impl CodeGenVisitor {
             symboltable,
             buffer: String::new(),
             declaration_buffer: String::new(),
+            free_buffer: String::new(),
             label_no: 0,
         };
     }
@@ -37,6 +39,15 @@ impl CodeGenVisitor {
         }
     }
 
+    fn type_conversion_from_node_type(source_type: NodeType) -> String {
+        match source_type {
+            NodeType::Simple(t) => CodeGenVisitor::type_conversion(t),
+            NodeType::ArrayOf(t) => format!("{} *", CodeGenVisitor::type_conversion(t)),
+            NodeType::Unit => String::from("UNIT TYPE ERROR"),
+        }
+    }
+
+
     fn printf_format_conversion(source_type: NodeType) -> String {
         match source_type {
             NodeType::Simple(t) => match t.as_str() {
@@ -50,7 +61,7 @@ impl CodeGenVisitor {
     }
 
     pub fn get_output(&self) -> String {
-        self.declaration_buffer.clone() + self.buffer.as_str()
+        self.declaration_buffer.clone() + self.buffer.as_str() + self.free_buffer.as_str()
     }
 
     fn get_lhs_text_for_item(source_type: NodeType, item_id: String) -> String {
@@ -62,10 +73,8 @@ impl CodeGenVisitor {
                     let t = CodeGenVisitor::type_conversion(t);
                     format!("{} {}", t, item_id.clone())
                 }
-            },
-            NodeType::ArrayOf(t) => {
-                format!("{} *{}", CodeGenVisitor::type_conversion(t), item_id)
-            },
+            }
+            NodeType::ArrayOf(t) => format!("{} *{}", CodeGenVisitor::type_conversion(t), item_id),
             _ => format!(""),
         }
     }
@@ -192,6 +201,7 @@ impl Visitor for CodeGenVisitor {
     fn visit_program(&mut self, node: &mut Program) {
         self.declaration_buffer.push_str("#include <stdio.h>\n");
         self.declaration_buffer.push_str("#include <string.h>\n");
+        self.declaration_buffer.push_str("#include <stdlib.h>\n");
         self.declaration_buffer.push_str("int booltmp = 0;\n");
         self.declaration_buffer.push_str("int main() {\n");
         self.symboltable.enter_scope_with_number(1);
@@ -199,7 +209,7 @@ impl Visitor for CodeGenVisitor {
             child.accept(self);
         }
         self.symboltable.exit_scope();
-        self.buffer.push_str("return 0;\n}")
+        self.free_buffer.push_str("return 0;\n}")
     }
     fn visit_block(&mut self, node: &mut Block) {
         let scope_number = node.get_scope_no();
@@ -217,13 +227,20 @@ impl Visitor for CodeGenVisitor {
         if let Some(id_child) = node.get_id_child() {
             if let Some(type_child) = node.get_type_child() {
                 let t = type_child.get_token().lexeme.clone();
-                let node_t = NodeType::Simple(t);
+                let node_t = id_child.get_type();
                 let target_id = id_child.get_result_addr();
                 let lhs_text = CodeGenVisitor::get_lhs_text_for_item(node_t, target_id.clone());
                 let text = format!("{};\n", lhs_text);
                 self.declaration_buffer.push_str(text.as_str());
                 if let Some(size_node) = node.get_array_type_len_child() {
-
+                    println!("Found length");
+                    let type_id = CodeGenVisitor::type_conversion(t);
+                    let size_addr = size_node.get_result_addr();
+                    let alloc_text =
+                        format!("{} = ({} *) malloc({});\n", target_id, type_id, size_addr);
+                    self.buffer.push_str(alloc_text.as_str());
+                    let free_text = format!("free({});\n", target_id);
+                    self.free_buffer.push_str(free_text.as_str());
                 }
             }
         }
@@ -233,21 +250,30 @@ impl Visitor for CodeGenVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
+        // TODO: Left hand side Arrays
         if let Some(id_child) = node.get_lhs_child() {
             let target_addr = id_child.get_result_addr();
+            println!("{}", target_addr.clone());
             if let Some(val_child) = node.get_rhs_child() {
                 let value_addr = val_child.get_result_addr();
-                match val_child.get_type() {
-                    NodeType::Simple(t) => {
-                        if t.as_str() == "string" {
-                            let text = format!("strcpy({}, {});\n", target_addr, value_addr);
-                            self.buffer.push_str(text.as_str());
-                        } else {
-                            let text = format!("{} = {};\n", target_addr, value_addr);
-                            self.buffer.push_str(text.as_str());
+                match id_child.get_type() {
+                    NodeType::Simple(_tl) => {
+                        match val_child.get_type() {
+                            NodeType::Simple(tr) => {
+                                if tr.as_str() == "string" {
+                                    let text = format!("strcpy({}, {});\n", target_addr, value_addr);
+                                    self.buffer.push_str(text.as_str());
+                                } else {
+                                    let text = format!("{} = {};\n", target_addr, value_addr);
+                                    self.buffer.push_str(text.as_str());
+                                }
+                            }
+                            NodeType::ArrayOf(_tr) => (),
+                            NodeType::Unit => (),
                         }
-                    }
-                    NodeType::ArrayOf(_t) => (),
+
+                    },
+                    NodeType::ArrayOf(tl) => {},
                     NodeType::Unit => (),
                 }
             }
@@ -291,8 +317,18 @@ impl Visitor for CodeGenVisitor {
     fn visit_variable(&mut self, node: &mut Variable) {
         let lex = node.get_token().lexeme.clone();
         if let Some(entry) = self.symboltable.lookup(&lex) {
-            let addr = entry.address.clone();
-            node.set_result_addr(addr);
+            if node.has_index() {
+                if let Some(index) = node.get_index_child() {
+                    let addr = format!("{}[{}]", entry.address.clone(), index.get_result_addr());
+                    node.set_result_addr(addr);
+                }
+            } else {
+                let addr = entry.address.clone();
+                node.set_result_addr(addr);
+            }
+        }
+        for child in node.get_children() {
+            child.accept(self)
         }
     }
     fn visit_literal(&mut self, node: &mut Literal) {

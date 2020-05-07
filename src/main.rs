@@ -29,10 +29,10 @@ fn main() -> std::io::Result<()>{
     let mut cgv = codegenvisitor::CodeGenVisitor::new(symboltable);
     uast.accept(&mut cgv);
     for e in parser.errors {
-        println!("{}", e);
+        println!("Parsing error: {}", e);
     }
     for e in sv.errors {
-        println!("{}", e);
+        println!("Semantic error: {}", e);
     }
     print!("{}", cgv.get_output());
     let resultname = filename.clone().replace(".minipascal", ".c");

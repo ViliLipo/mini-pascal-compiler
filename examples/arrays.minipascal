@@ -1,0 +1,19 @@
+program arrays;
+begin
+  var i : integer;
+  var A : array[5] of integer;
+  i := 0;
+  while i < 5 do
+  begin
+    A[i] := 5 - i;
+    i := i + 1;
+  end
+  i := 0
+  while i < 5 do
+  begin
+    writeln(A[i]);
+    i := i + 1;
+  end
+end.
+
+

@@ -82,6 +82,21 @@ pub struct Program {
     children: Vec<Box<dyn Node>>,
 }
 
+impl Program {
+    pub fn get_id_child(&self) -> Option<&Variable> {
+        self.get_child(0)
+    }
+    fn get_child(&self, no: usize) -> Option<&Variable> {
+        match self.children.get(no) {
+            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
+                Some(var) => Some(var),
+                None => None,
+            },
+            None => None,
+        }
+    }
+}
+
 impl Node for Program {
     fn get_token(&self) -> Token {
         self.token.clone()
@@ -134,22 +149,13 @@ impl Declaration {
         self.get_child(1)
     }
 
-    pub fn get_array_type_len_child_as_node(&mut self) -> Option<&mut Box<dyn Node>> {
+    pub fn get_array_type_len_child(&mut self) -> Option<&mut Box<dyn Node>> {
         match self.children.get_mut(2) {
             Some(child) => Some(child),
             None => None,
         }
     }
 
-    pub fn get_array_type_len_child(&self) -> Option<&Expression> {
-        match self.children.get(2) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Expression>() {
-                Some(expr) => Some(expr),
-                None => None,
-            },
-            None => None,
-        }
-    }
 }
 
 impl Node for Declaration {
