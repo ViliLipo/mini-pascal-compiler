@@ -133,19 +133,19 @@ pub struct Declaration {
 }
 
 impl Declaration {
-    pub fn get_id_child(&self) -> Option<&Variable> {
+    pub fn get_id_child(&self) -> Option<&Identifier> {
         self.get_child(0)
     }
-    fn get_child(&self, no: usize) -> Option<&Variable> {
+    fn get_child(&self, no: usize) -> Option<&Identifier> {
         match self.children.get(no) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
+            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Identifier>() {
                 Some(var) => Some(var),
                 None => None,
             },
             None => None,
         }
     }
-    pub fn get_type_child(&self) -> Option<&Variable> {
+    pub fn get_type_child(&self) -> Option<&Identifier> {
         self.get_child(1)
     }
 
@@ -379,6 +379,54 @@ impl Node for Variable {
     }
 }
 
+pub struct Identifier {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl  Node for Identifier {
+
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn add_child(&mut self, _child: Box<dyn Node>) {
+        ()
+    }
+
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>>{
+        self.children.as_mut()
+    }
+
+
+    fn get_result_addr(&self) -> String{
+        String::from("No address")
+    }
+
+    fn set_result_addr(&mut self, _addr: String) {
+        ()
+    }
+
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+
+    fn set_type(&mut self, _type_id: NodeType) {
+        ()
+    }
+
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit_identifier(self);
+    }
+
+}
+
+
+
 pub struct Literal {
     token: Token,
     children: Vec<Box<dyn Node>>,
@@ -602,23 +650,22 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             children: Vec::new(),
         }),
         TokenKind::Identifier => {
-            if flag != "call" {
-                Box::from(Variable {
+            match flag {
+            "var" =>  Box::from(Variable {
                     token,
                     children: Vec::new(),
                     type_id: NodeType::Unit,
                     result_addr: String::new(),
-                })
-            } else {
-                println!("Creating a call");
-                Box::from(Call {
+                }),
+            "call" => Box::from(Call {
                     token,
                     children: Vec::new(),
                     type_id: NodeType::Unit,
                     result_addr: String::new(),
-                })
+                }),
+            _ => Box::from(Identifier{ token, children: Vec::new(),}),
             }
-        }
+        },
         TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
             Box::from(Literal {
                 token,

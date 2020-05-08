@@ -121,13 +121,18 @@ impl Visitor for SemanticVisitor {
             child.accept(self);
         }
     }
+
+    fn visit_identifier(&mut self, _node: &mut Identifier) {
+        ()
+    }
+
     fn visit_program(&mut self, node: &mut Program) {
         if let Some(name_child) = node.get_id_child() {
             let prog_id = name_child.get_token().lexeme.clone();
             self.symboltable.add_entry(Entry {
                 name: prog_id,
                 category: ConstructCategory::Program,
-                entry_type: String::from("integer"),
+                entry_type: NodeType::Simple(String::from("integer")),
                 value: String::from("PROGRAM"),
                 scope_number: 0,
                 address: String::from(""),
@@ -146,28 +151,35 @@ impl Visitor for SemanticVisitor {
         self.symboltable.exit_scope()
     }
     fn visit_declaration(&mut self, node: &mut Declaration) {
-        println!("visit declaration");
+        // TODO Add identifier nodes
+        for child in node.get_children() {
+            child.accept(self);
+        }
         if let Some(id_child) = node.get_id_child() {
+            println!("Got id child");
             if let Some(type_child) = node.get_type_child() {
+                println!("Got type child");
                 let name = id_child.get_token().lexeme.clone();
+                println!("{}", name.clone());
                 let t = type_child.get_token().lexeme.clone();
                 if let Some(type_entry) = self.symboltable.lookup(&t) {
-                    let entry_type = type_entry.name.clone();
+                    let type_name = type_entry.name.clone();
                     let value = type_entry.value.clone();
                     if let Some(scope) = self.symboltable.current_scope() {
                         let addr = self.get_register_id();
                         let entry = if let Some(len_expr) = node.get_array_type_len_child()
                         {
-                            len_expr.accept(self);
+                            let entry_type = NodeType::ArrayOf(type_name);
                             Entry {
                                 name: name.clone(),
                                 category: ConstructCategory::ArrayVar,
-                                value,
+                                value: len_expr.get_result_addr(),
                                 scope_number: scope.scope_number,
                                 entry_type,
                                 address: addr.clone(),
                             }
                         } else {
+                            let entry_type = NodeType::Simple(type_name);
                             Entry {
                                 name: name.clone(),
                                 category: ConstructCategory::SimpleVar,
@@ -185,14 +197,10 @@ impl Visitor for SemanticVisitor {
                         }
                     }
                 } else {
-                    println!("{}", t);
                     self.errors
                         .push(String::from("Usage of an undeclared type"));
                 }
             }
-        }
-        for child in node.get_children() {
-            child.accept(self);
         }
     }
 
@@ -282,19 +290,20 @@ impl Visitor for SemanticVisitor {
         let name = node.get_token().lexeme.clone();
         if let Some(entry) = self.symboltable.lookup(&name) {
             let result_addr = entry.address.clone();
-            node.set_result_addr(result_addr);
+            println!("Var Result address: {}", result_addr.clone());
             if node.has_index() {
-                println!("has index");
-                if let ConstructCategory::ArrayVar = entry.category {
+                if let NodeType::ArrayOf(node_t) = entry.entry_type.clone() {
                     if let Some(index_child) = node.get_index_child() {
+                        let index_addr = index_child.get_result_addr();
                         match index_child.get_type() {
                             NodeType::Simple(t) => {
                                 if t.as_str() != "integer" {
                                     self.errors
                                         .push(format!("Array index must be of the type int"));
                                 } else {
-                                    println!("Found indexed array var");
-                                    node.set_type(NodeType::Simple(entry.entry_type.clone()));
+                                    node.set_type(NodeType::Simple(node_t));
+                                    let addr = format!("{}[{}]", result_addr, index_addr);
+                                    node.set_result_addr(addr);
                                 }
                             }
                             _ => self
@@ -303,18 +312,12 @@ impl Visitor for SemanticVisitor {
                         }
                     }
                 } else {
+                    node.set_result_addr(result_addr);
                     self.errors.push(format!("Can't index a simple type"));
                 }
             } else {
-                match entry.category {
-                    ConstructCategory::SimpleVar => {
-                        node.set_type(NodeType::Simple(entry.entry_type.clone()));
-                    }
-                    ConstructCategory::ArrayVar => {
-                        node.set_type(NodeType::ArrayOf(entry.entry_type.clone()));
-                    }
-                    _ => (),
-                }
+                node.set_result_addr(result_addr);
+                node.set_type(entry.entry_type.clone());
             }
         } else {
             self.errors
@@ -334,7 +337,6 @@ impl Visitor for SemanticVisitor {
     }
 
     fn visit_call(&mut self, node: &mut Call) {
-        println!("in call");
         for child in node.get_children() {
             child.accept(self);
         }

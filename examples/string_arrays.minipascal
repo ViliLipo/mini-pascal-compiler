@@ -1,12 +1,12 @@
 program arrays;
 begin
   var i : integer;
-  var A : array[5] of integer;
-  var B : array[5] of integer;
+  var A : array[5] of string;
+  var B : array[5] of string;
   i := 0;
   while i < 5 do
   begin
-    A[i] := 5 - i;
+    A[i] := "AASI" + " LMAOO";
     i := i + 1;
   end
   i := 0

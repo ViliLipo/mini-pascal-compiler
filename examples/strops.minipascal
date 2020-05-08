@@ -1,6 +1,9 @@
 program strops;
 begin
-  var A : array[5] of integer;
-  A[2] := 10;
-  writeln(A[1 + 1]);
+  var s: string;
+  s := "Kenguru" + " Loikkaa";
+  writeln(s);
+  var t: Boolean;
+  t := "A" < s;
+  writeln(t);
 end.

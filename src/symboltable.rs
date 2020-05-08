@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::ast::NodeType;
 
 
 
@@ -21,7 +22,7 @@ pub struct Entry {
     pub name: String,
     pub category: ConstructCategory,
     pub value: String,
-    pub entry_type: String,
+    pub entry_type: NodeType,
     pub scope_number: i32,
     pub address: String,
 }
@@ -183,7 +184,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("Boolean"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: String::from("type"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
@@ -191,7 +192,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("integer"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: String::from("type"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
@@ -199,7 +200,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("real"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: String::from("type"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
@@ -207,7 +208,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("string"),
         category: ConstructCategory::TypeId,
         value: String::from(""),
-        entry_type: String::from("type"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
@@ -215,7 +216,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("false"),
         category: ConstructCategory::SimpleVar,
         value: String::from("0"),
-        entry_type: String::from("Boolean"),
+        entry_type: NodeType::Simple(String::from("Boolean")),
         scope_number: 0,
         address: String::new(),
     });
@@ -223,7 +224,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("true"),
         category: ConstructCategory::SimpleVar,
         value: String::from("1"),
-        entry_type: String::from("Boolean"),
+        entry_type: NodeType::Simple(String::from("Boolean")),
         scope_number: 0,
         address: String::new(),
     });
@@ -231,7 +232,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("writeln"),
         category: ConstructCategory::Function,
         value: String::from(""),
-        entry_type: String::from("function"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
@@ -239,7 +240,7 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("read"),
         category: ConstructCategory::Function,
         value: String::from(""),
-        entry_type: String::from("function"),
+        entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });

@@ -97,6 +97,12 @@ impl Visitor for PrintVisitor {
         }
         print!(")");
     }
+
+    fn visit_identifier(&mut self, node: &mut Identifier) {
+        print!("Identifier(");
+        print!("{}", node.get_token().lexeme);
+        print!(")");
+    }
 }
 
 

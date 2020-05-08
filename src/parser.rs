@@ -345,7 +345,7 @@ impl Parser {
         match self.current_token.token_kind {
             TokenKind::Identifier => {
                 let old_token = self.current_token.clone();
-                let mut node = make_node(old_token, "");
+                let mut node = make_node(old_token, "var");
                 self.next_token();
                 if let TokenKind::OpenSquareBracket = self.current_token.token_kind {
                     self.next_token();
