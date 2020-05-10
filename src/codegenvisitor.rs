@@ -258,10 +258,12 @@ impl Visitor for CodeGenVisitor {
                             let type_id =
                                 CodeGenVisitor::type_conversion_from_node_type(node_t.clone());
                             let size_addr = size_node.get_result_addr();
+                            let size_text = format!("int {}_size = {};\n", target_id, size_addr);
                             let alloc_text = format!(
                                 "{} = ({}) malloc({} * sizeof({}));\n",
                                 target_id, type_id, size_addr, type_id
                             );
+                            self.buffer.push_str(size_text.as_str());
                             self.buffer.push_str(alloc_text.as_str());
                             if t.as_str() == "string" {
                                 let str_alloc_text =
@@ -401,11 +403,52 @@ impl Visitor for CodeGenVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(child) = node.get_children().get(0) {
-            let addr = child.get_result_addr().clone();
-            let format_param = CodeGenVisitor::printf_format_conversion(child.get_type());
-            let text = format!("printf(\"{}\\n\", {});\n", format_param, addr);
-            self.buffer.push_str(text.as_str());
+        match node.get_type() {
+            NodeType::Unit => (),
+            NodeType::Simple(_type_id) => {
+                let lhs_text = CodeGenVisitor::get_lhs_text_for_item(node.get_type(),
+                node.get_result_addr());
+                let text = format!("{};\n", lhs_text);
+                self.declaration_buffer.push_str(text.as_str());
+            }
+            NodeType::ArrayOf(_type_id) => () // TODO: arrays as return values
+        };
+        match node.get_token().lexeme.as_str() {
+            "writeln" => {
+                if let Some(args) = node.get_arguments() {
+                    for argument in args.get_children() {
+                        let addr = argument.get_result_addr().clone();
+                        let format_param =
+                            CodeGenVisitor::printf_format_conversion(argument.get_type());
+                        let text = format!("printf(\"{}\\n\", {});\n", format_param, addr);
+                        self.buffer.push_str(text.as_str());
+                    }
+                }
+            }
+            "read" => (),
+            "size" => {
+                let result_addr = node.get_result_addr();
+                if let Some(args) = node.get_arguments() {
+                    println!("GOT ARGS");
+                    if let Some(array) = args.get_children().get(0) {
+                        println!("Args got children");
+                        if let Some(entry) =
+                            self.symboltable.lookup(&array.get_token().lexeme.clone())
+                        {
+                            let array_addr = entry.address.clone();
+                            let text = format!("{} = {}_size;\n", result_addr, array_addr);
+                            self.buffer.push_str(text.as_str());
+                        }
+                    }
+                }
+            }
+            _ => (), // TODO normal functions
+        }
+    }
+
+    fn visit_argument(&mut self, node: &mut ArgumentNode) {
+        for child in node.get_children() {
+            child.accept(self);
         }
     }
 

@@ -2,7 +2,9 @@ program strops;
 begin
   var s: string;
   s := "Kenguru" + " Loikkaa";
-  writeln(s);
+  var s2: string;
+  s2 := s + " korkealle!";
+  writeln(s2);
   var t: Boolean;
   t := "A" < s;
   writeln(t);

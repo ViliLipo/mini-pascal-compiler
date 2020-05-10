@@ -103,6 +103,15 @@ impl Visitor for PrintVisitor {
         print!("{}", node.get_token().lexeme);
         print!(")");
     }
+
+    fn visit_argument(&mut self, node: &mut ArgumentNode) {
+        print!("Arguments(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
 }
 
 

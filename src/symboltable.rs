@@ -1,20 +1,23 @@
-use std::collections::HashMap;
 use crate::ast::NodeType;
-
-
+use std::collections::HashMap;
 
 pub enum ConstructCategory {
     SimpleVar,
     ArrayVar,
-    Function,
+    Function(Vec<NodeType>, NodeType),
     Program,
     TypeId,
 }
 
-impl Copy for ConstructCategory {}
 impl Clone for ConstructCategory {
     fn clone(&self) -> ConstructCategory {
-        *self
+        match self {
+            ConstructCategory::Function(v, s) => ConstructCategory::Function(v.clone(), s.clone()),
+            ConstructCategory::Program => ConstructCategory::Program,
+            ConstructCategory::TypeId => ConstructCategory::TypeId,
+            ConstructCategory::ArrayVar => ConstructCategory::ArrayVar,
+            ConstructCategory::SimpleVar => ConstructCategory::SimpleVar,
+        }
     }
 }
 
@@ -29,7 +32,7 @@ pub struct Entry {
 
 impl Clone for Entry {
     fn clone(&self) -> Entry {
-        Entry{
+        Entry {
             name: self.name.clone(),
             category: self.category.clone(),
             value: self.value.clone(),
@@ -72,7 +75,7 @@ impl Clone for Symboltable {
     }
 }
 impl Symboltable {
-    fn get_new_scope_number(&mut self) -> i32{
+    fn get_new_scope_number(&mut self) -> i32 {
         let no = self.generator_no;
         self.generator_no = self.generator_no + 1;
         no
@@ -99,7 +102,7 @@ impl Symboltable {
         }
     }
 
-    pub fn new_scope_in_current_scope(&mut self, is_closed: bool) -> i32{
+    pub fn new_scope_in_current_scope(&mut self, is_closed: bool) -> i32 {
         match self.scopestack.last() {
             Some(scope_number) => {
                 let enclosing_scope_number = scope_number.clone();
@@ -230,7 +233,10 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("writeln"),
-        category: ConstructCategory::Function,
+        category: ConstructCategory::Function(
+            vec![NodeType::Simple(String::from("Any"))],
+            NodeType::Unit,
+        ),
         value: String::from(""),
         entry_type: NodeType::Unit,
         scope_number: 0,
@@ -238,12 +244,26 @@ fn predefined_ids() -> Vec<Entry> {
     });
     entries.push(Entry {
         name: String::from("read"),
-        category: ConstructCategory::Function,
+        category: ConstructCategory::Function(
+            vec![NodeType::Simple(String::from("Any"))],
+            NodeType::Simple(String::from("Any")),
+        ),
         value: String::from(""),
         entry_type: NodeType::Unit,
         scope_number: 0,
         address: String::new(),
     });
+    entries.push(Entry {
+        name: String::from("size"),
+        category: ConstructCategory::Function(
+            vec![NodeType::ArrayOf(String::from("Any"))],
+            NodeType::Simple(String::from("integer"))),
+        value: String::from(""),
+        entry_type: NodeType::Simple(String::from("integer")),
+        address: String::new(),
+        scope_number: 0,
+    });
+
     entries
 }
 

@@ -1,4 +1,5 @@
 use crate::ast::make_node;
+use crate::ast::get_args_node;
 use crate::ast::Node;
 use crate::scanner::Scanner;
 use crate::scanner::Token;
@@ -212,13 +213,13 @@ impl Parser {
     }
 
     fn assign_or_call_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        match self.variable() {
-            None=> None,
-            Some(id_node) => match self.current_token.token_kind {
-                TokenKind::Assign => {
+        match self.variable_or_call() {
+            None => None,
+            Some(node) => match self.current_token.token_kind {
+                TokenKind::Assign => { // TODO: FORBID assign to a call
                     let mut main_node = make_node(self.current_token.clone(), "");
                     self.next_token();
-                    main_node.add_child(id_node);
+                    main_node.add_child(node);
                     match self.expression() {
                         Some(expr_node) => {
                             main_node.add_child(expr_node);
@@ -227,24 +228,7 @@ impl Parser {
                         None => None,
                     }
                 }
-                TokenKind::OpenBracket => {
-                    self.next_token();
-                    let mut call_node = make_node(id_node.get_token(), "call");
-                    match self.arguments() {
-                        Some(args_node) => {
-                            call_node.add_child(args_node);
-                            match self.match_token(TokenKind::CloseBracket) {
-                                Ok(_delim) => Some(call_node),
-                                Err(msg) => {
-                                    self.errors.push(msg);
-                                    None
-                                }
-                            }
-                        }
-                        None => Some(call_node),
-                    }
-                }
-                _ => None,
+                _ => Some(node),
             },
         }
     }
@@ -319,7 +303,7 @@ impl Parser {
 
     fn factor(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
-            TokenKind::Identifier => self.variable(),
+            TokenKind::Identifier => self.variable_or_call(),
             TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
                 let node = make_node(self.current_token.clone(), "");
                 self.next_token();
@@ -341,32 +325,78 @@ impl Parser {
         }
     }
 
-    fn variable(&mut self) -> Option<Box<dyn Node>> {
+    fn variable_or_call(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
             TokenKind::Identifier => {
                 let old_token = self.current_token.clone();
-                let mut node = make_node(old_token, "var");
                 self.next_token();
-                if let TokenKind::OpenSquareBracket = self.current_token.token_kind {
-                    self.next_token();
-                    if let Some(expr) = self.expression() {
-                        node.add_child(expr);
-                    }
-                    match self.match_token(TokenKind::CloseSquareBracket) {
-                        Ok(_delim) => (),
-                        Err(msg) => self.errors.push(msg),
-                    }
+                match self.current_token.token_kind {
+                    TokenKind::OpenSquareBracket => {
+                        let mut node = make_node(old_token, "var");
+                        self.next_token();
+                        if let Some(expr) = self.expression() {
+                            node.add_child(expr);
+                        }
+                        match self.match_token(TokenKind::CloseSquareBracket) {
+                            Ok(_delim) => (),
+                            Err(msg) => self.errors.push(msg),
+                        }
+                        Some(node)
+                    },
+                    TokenKind::OpenBracket => {
+                        let mut node = make_node(old_token, "call");
+                        if let Some(args) = self.arguments() {
+                            node.add_child(args);
+                        }
+                        Some(node)
+                    },
+                    TokenKind::Dot => {
+                        self.next_token();
+                        let arg = make_node(old_token, "var");
+                        if let TokenKind::Identifier = self.current_token.token_kind{
+                            let mut node = make_node(self.current_token.clone(), "call");
+                            self.next_token();
+                            let mut args = get_args_node(self.current_token.clone());
+                            args.add_child(arg);
+                            node.add_child(Box::from(args));
+                            Some(node)
+                        } else {
+                            None
+                        }
+                    },
+                    _ => Some(make_node(old_token, "var")),
                 }
-                Some(node)
             }
             _ => None,
         }
     }
 
     fn arguments(&mut self) -> Option<Box<dyn Node>> {
-        match self.expression() {
-            Some(expr_node) => Some(expr_node),
-            None => None,
+        match self.current_token.token_kind {
+            TokenKind::OpenBracket => {
+                let mut main_node = make_node(self.current_token.clone(), "args");
+                self.next_token();
+                if let Some(expr) = self.expression() {
+                    main_node.add_child(expr);
+                    println!("Added expr child");
+                    loop {
+                        if let TokenKind::Comma = self.current_token.token_kind {
+                            self.next_token();
+                            if let Some(expr) = self.expression() {
+                                main_node.add_child(expr)
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
+                    self.errors.push(msg)
+                }
+                println!("Parsed arguments");
+                Some(main_node)
+            },
+            _ => None,
         }
     }
 }

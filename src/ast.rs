@@ -1,8 +1,8 @@
 use crate::scanner::Token;
 use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
-use std::fmt;
 use std::any::Any;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum NodeType {
@@ -19,7 +19,6 @@ impl NodeType {
             NodeType::Unit => format!("Unit"),
         }
     }
-
 }
 
 impl fmt::Display for NodeType {
@@ -28,32 +27,24 @@ impl fmt::Display for NodeType {
     }
 }
 
-
 impl PartialEq for NodeType {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            NodeType::Simple(s) => {
-                match other {
-                    NodeType::Simple(s2) => s == s2,
-                    _ => false,
-                }
+            NodeType::Simple(s) => match other {
+                NodeType::Simple(s2) => s == s2,
+                _ => false,
             },
-            NodeType::ArrayOf(s) => {
-                match other {
-                    NodeType::ArrayOf(s2) => s == s2,
-                    _ => false,
-                }
+            NodeType::ArrayOf(s) => match other {
+                NodeType::ArrayOf(s2) => s == s2,
+                _ => false,
             },
-            NodeType::Unit => {
-                match other {
-                    NodeType::Unit => true,
-                    _ => false,
-                }
-            }
+            NodeType::Unit => match other {
+                NodeType::Unit => true,
+                _ => false,
+            },
         }
     }
 }
-
 
 impl Clone for NodeType {
     fn clone(&self) -> NodeType {
@@ -155,7 +146,6 @@ impl Declaration {
             None => None,
         }
     }
-
 }
 
 impl Node for Declaration {
@@ -384,8 +374,7 @@ pub struct Identifier {
     children: Vec<Box<dyn Node>>,
 }
 
-impl  Node for Identifier {
-
+impl Node for Identifier {
     fn get_token(&self) -> Token {
         self.token.clone()
     }
@@ -398,12 +387,11 @@ impl  Node for Identifier {
         ()
     }
 
-    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>>{
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         self.children.as_mut()
     }
 
-
-    fn get_result_addr(&self) -> String{
+    fn get_result_addr(&self) -> String {
         String::from("No address")
     }
 
@@ -422,10 +410,7 @@ impl  Node for Identifier {
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_identifier(self);
     }
-
 }
-
-
 
 pub struct Literal {
     token: Token,
@@ -469,6 +454,22 @@ pub struct Call {
     children: Vec<Box<dyn Node>>,
     type_id: NodeType,
     result_addr: String,
+}
+
+impl Call {
+
+    fn get_child(&mut self, no: usize) -> Option<&mut Box<dyn Node>> {
+        match self.children.get_mut(no) {
+            Some(child) => Some(child),
+            None => None,
+        }
+    }
+
+    pub fn get_arguments(&mut self) -> Option<&mut Box<dyn Node>> {
+        self.get_child(0)
+    }
+
+
 }
 
 impl Node for Call {
@@ -594,6 +595,76 @@ impl Node for WhileNode {
     }
 }
 
+pub struct ParameterNode {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl Node for ParameterNode {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
+    }
+    fn add_child(&mut self, child: Box<dyn Node>) {
+        self.children.insert(self.children.len(), child);
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn set_type(&mut self, _type_id: NodeType) {
+        ()
+    }
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+    fn set_result_addr(&mut self, _addr: String) {
+        ()
+    }
+    fn get_result_addr(&self) -> String {
+        String::new()
+    }
+}
+
+pub struct ArgumentNode {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl Node for ArgumentNode {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
+    }
+    fn add_child(&mut self, child: Box<dyn Node>) {
+        self.children.insert(self.children.len(), child);
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit_argument(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn set_type(&mut self, _type_id: NodeType) {
+        ()
+    }
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+    fn set_result_addr(&mut self, _addr: String) {
+        ()
+    }
+    fn get_result_addr(&self) -> String {
+        String::new()
+    }
+}
+
 pub struct ErrorNode {
     token: Token,
     children: Vec<Box<dyn Node>>,
@@ -649,22 +720,23 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             token,
             children: Vec::new(),
         }),
-        TokenKind::Identifier => {
-            match flag {
-            "var" =>  Box::from(Variable {
-                    token,
-                    children: Vec::new(),
-                    type_id: NodeType::Unit,
-                    result_addr: String::new(),
-                }),
+        TokenKind::Identifier => match flag {
+            "var" => Box::from(Variable {
+                token,
+                children: Vec::new(),
+                type_id: NodeType::Unit,
+                result_addr: String::new(),
+            }),
             "call" => Box::from(Call {
-                    token,
-                    children: Vec::new(),
-                    type_id: NodeType::Unit,
-                    result_addr: String::new(),
-                }),
-            _ => Box::from(Identifier{ token, children: Vec::new(),}),
-            }
+                token,
+                children: Vec::new(),
+                type_id: NodeType::Unit,
+                result_addr: String::new(),
+            }),
+            _ => Box::from(Identifier {
+                token,
+                children: Vec::new(),
+            }),
         },
         TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
             Box::from(Literal {
@@ -699,9 +771,18 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             token,
             children: Vec::new(),
         }),
+        TokenKind::OpenBracket => match flag {
+            "params" => Box::from(ParameterNode{token, children: Vec::new() }),
+            "args" => Box::from(ArgumentNode{token, children: Vec::new()}),
+            _ => Box::from(ErrorNode{token, children:Vec::new()}),
+        },
         _ => Box::from(ErrorNode {
             token: token,
             children: Vec::new(),
         }),
     }
+}
+
+pub fn get_args_node(token: Token) -> Box<dyn Node> {
+    Box::from(ArgumentNode{token, children: Vec::new()})
 }

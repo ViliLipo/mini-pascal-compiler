@@ -1,0 +1,8 @@
+program arrays;
+begin
+  var i : integer;
+  var A: array[5] of integer;
+  writeln(A.size);
+end.
+
+

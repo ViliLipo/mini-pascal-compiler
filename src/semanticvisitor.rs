@@ -340,7 +340,44 @@ impl Visitor for SemanticVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
+        let called_id = node.get_token().lexeme.clone();
+        println!("Function {} called", called_id.clone());
+        let addr = self.get_register_id();
+        if let Some(entry) = self.symboltable.lookup(&called_id) {
+            match &entry.category {
+                ConstructCategory::Function(param_type_list, output_type) => {
+                    node.set_type(output_type.clone());
+                    println!("Function output_type {}", output_type.clone());
+                    node.set_result_addr(addr);
+                    if let Some(args) = node.get_arguments() {
+                        let children = args.get_children();
+                        if children.len() != param_type_list.len() {
+                            self.errors.push(format!("Invalid length of an argument list"));
+                        } else {
+                            let mut i = 0;
+                            while i < param_type_list.len() {
+                                let child_type = children[i].get_type();
+                                if param_type_list[i] != child_type {
+                                    self.errors.push(format!("Argument {} is not type {}",
+                                                             i, param_type_list[i]));
+                                    i = i + 1;
+                                }
+                            }
+                        }
+                    }
+                },
+                _ => self.errors.push(format!("Calling a non-callable type.")),
+            }
+        }
     }
+
+    fn visit_argument(&mut self, node: &mut ArgumentNode) {
+        for child in node.get_children() {
+            child.accept(self);
+        }
+
+    }
+
     fn visit_if(&mut self, node: &mut IfNode) {
         for child in node.get_children() {
             child.accept(self);
