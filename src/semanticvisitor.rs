@@ -113,6 +113,39 @@ impl SemanticVisitor {
             }
         }
     }
+
+    fn indexed_variable(&mut self, node: &mut Variable) {
+        let name = node.get_token().lexeme.clone();
+        if let Some(entry) = self.symboltable.lookup(&name) {
+            let result_addr = entry.address.clone();
+            if let NodeType::ArrayOf(node_t) = entry.entry_type.clone() {
+                if let Some(index_child) = node.get_index_child() {
+                    let index_addr = index_child.get_result_addr();
+                    match index_child.get_type() {
+                        NodeType::Simple(t) => {
+                            if t.as_str() != "integer" {
+                                self.errors
+                                    .push(format!("Array index must be of the type int"));
+                            } else {
+                                node.set_type(NodeType::Simple(node_t));
+                                let addr = format!("{}[{}]", result_addr, index_addr);
+                                node.set_result_addr(addr);
+                            }
+                        }
+                        _ => self
+                            .errors
+                            .push(format!("Array indexes must be of the type of int")),
+                    }
+                }
+            } else {
+                node.set_result_addr(result_addr);
+                self.errors.push(format!("Can't index a simple type"));
+            }
+        } else {
+            self.errors
+                .push(format!("Reference to an undeclared variable {}", name));
+        }
+    }
 }
 
 impl Visitor for SemanticVisitor {
@@ -122,8 +155,10 @@ impl Visitor for SemanticVisitor {
         }
     }
 
-    fn visit_identifier(&mut self, _node: &mut Identifier) {
-        ()
+    fn visit_identifier(&mut self, node: &mut Identifier) {
+        for child in node.get_children() {
+            child.accept(self);
+        }
     }
 
     fn visit_program(&mut self, node: &mut Program) {
@@ -151,24 +186,19 @@ impl Visitor for SemanticVisitor {
         self.symboltable.exit_scope()
     }
     fn visit_declaration(&mut self, node: &mut Declaration) {
-        // TODO Add identifier nodes
         for child in node.get_children() {
             child.accept(self);
         }
         if let Some(id_child) = node.get_id_child() {
-            println!("Got id child");
             if let Some(type_child) = node.get_type_child() {
-                println!("Got type child");
                 let name = id_child.get_token().lexeme.clone();
-                println!("{}", name.clone());
                 let t = type_child.get_token().lexeme.clone();
                 if let Some(type_entry) = self.symboltable.lookup(&t) {
                     let type_name = type_entry.name.clone();
                     let value = type_entry.value.clone();
                     if let Some(scope) = self.symboltable.current_scope() {
                         let addr = self.get_register_id();
-                        let entry = if let Some(len_expr) = node.get_array_type_len_child()
-                        {
+                        let entry = if let Some(len_expr) = type_child.get_type_id_len_child() {
                             let entry_type = NodeType::ArrayOf(type_name);
                             Entry {
                                 name: name.clone(),
@@ -250,7 +280,6 @@ impl Visitor for SemanticVisitor {
         }
     }
 
-    // TODO: fix operator type relation
     fn visit_expression(&mut self, node: &mut Expression) {
         for child in node.get_children() {
             child.accept(self);
@@ -288,40 +317,17 @@ impl Visitor for SemanticVisitor {
             child.accept(self)
         }
         let name = node.get_token().lexeme.clone();
-        if let Some(entry) = self.symboltable.lookup(&name) {
-            let result_addr = entry.address.clone();
-            println!("Var Result address: {}", result_addr.clone());
-            if node.has_index() {
-                if let NodeType::ArrayOf(node_t) = entry.entry_type.clone() {
-                    if let Some(index_child) = node.get_index_child() {
-                        let index_addr = index_child.get_result_addr();
-                        match index_child.get_type() {
-                            NodeType::Simple(t) => {
-                                if t.as_str() != "integer" {
-                                    self.errors
-                                        .push(format!("Array index must be of the type int"));
-                                } else {
-                                    node.set_type(NodeType::Simple(node_t));
-                                    let addr = format!("{}[{}]", result_addr, index_addr);
-                                    node.set_result_addr(addr);
-                                }
-                            }
-                            _ => self
-                                .errors
-                                .push(format!("Array indexes must be of the type of int")),
-                        }
-                    }
-                } else {
-                    node.set_result_addr(result_addr);
-                    self.errors.push(format!("Can't index a simple type"));
-                }
-            } else {
+        if node.has_index() {
+            self.indexed_variable(node);
+        } else {
+            if let Some(entry) = self.symboltable.lookup(&name) {
+                let result_addr = entry.address.clone();
                 node.set_result_addr(result_addr);
                 node.set_type(entry.entry_type.clone());
+            } else {
+                self.errors
+                    .push(format!("Reference to an undeclared variable {}", name));
             }
-        } else {
-            self.errors
-                .push(format!("Reference to an undeclared variable {}", name));
         }
     }
 
@@ -341,31 +347,30 @@ impl Visitor for SemanticVisitor {
             child.accept(self);
         }
         let called_id = node.get_token().lexeme.clone();
-        println!("Function {} called", called_id.clone());
         let addr = self.get_register_id();
         if let Some(entry) = self.symboltable.lookup(&called_id) {
             match &entry.category {
                 ConstructCategory::Function(param_type_list, output_type) => {
                     node.set_type(output_type.clone());
-                    println!("Function output_type {}", output_type.clone());
                     node.set_result_addr(addr);
                     if let Some(args) = node.get_arguments() {
                         let children = args.get_children();
                         if children.len() != param_type_list.len() {
-                            self.errors.push(format!("Invalid length of an argument list"));
+                            self.errors
+                                .push(format!("Invalid length of an argument list"));
                         } else {
-                            let mut i = 0;
-                            while i < param_type_list.len() {
+                            for i in 0..param_type_list.len() {
                                 let child_type = children[i].get_type();
                                 if param_type_list[i] != child_type {
-                                    self.errors.push(format!("Argument {} is not type {}",
-                                                             i, param_type_list[i]));
-                                    i = i + 1;
+                                    self.errors.push(format!(
+                                        "Argument {} is not type {}",
+                                        i, param_type_list[i]
+                                    ));
                                 }
                             }
                         }
                     }
-                },
+                }
                 _ => self.errors.push(format!("Calling a non-callable type.")),
             }
         }
@@ -375,7 +380,6 @@ impl Visitor for SemanticVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
-
     }
 
     fn visit_if(&mut self, node: &mut IfNode) {
@@ -402,7 +406,22 @@ impl Visitor for SemanticVisitor {
             if let NodeType::Simple(t) = cond_type {
                 if t.as_str() != "Boolean" {
                     self.errors
-                        .push(String::from("Non Boolean expression in an if statement"));
+                        .push(String::from("Non Boolean expression in a while condition"));
+                }
+            }
+        }
+    }
+    
+    fn visit_assert(&mut self, node: &mut AssertNode) {
+        for child in node.get_children() {
+            child.accept(self);
+        }
+        if let Some(condition) = node.get_condition() {
+            let cond_type = condition.get_type();
+            if let NodeType::Simple(t) = cond_type {
+                if t.as_str() != "Boolean" {
+                    self.errors
+                        .push(String::from("Non Boolean expression in an Assert statement"));
                 }
             }
         }

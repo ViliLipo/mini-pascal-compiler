@@ -112,6 +112,15 @@ impl Visitor for PrintVisitor {
         }
         print!(")");
     }
+
+    fn visit_assert(&mut self, node: &mut AssertNode) {
+        print!("Assert(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
 }
 
 

@@ -1,4 +1,4 @@
-program arrays;
+program sizetest;
 begin
   var i : integer;
   var A: array[5] of integer;

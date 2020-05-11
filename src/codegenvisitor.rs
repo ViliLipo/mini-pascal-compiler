@@ -1,12 +1,10 @@
 use crate::ast::*;
 use crate::semanticvisitor::string_as_opkind;
 use crate::semanticvisitor::OpKind;
-use crate::symboltable::Entry;
 use crate::symboltable::Symboltable;
 use crate::visitor::Visitor;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::BufReader;
 
 pub struct CodeGenVisitor {
     symboltable: Symboltable,
@@ -181,6 +179,7 @@ impl CodeGenVisitor {
         String::from(t_str)
     }
 
+    // TODO <> not working
     fn boolean_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
         let src_op = node.get_token().lexeme;
         let opkind = string_as_opkind(&src_op);
@@ -254,27 +253,30 @@ impl Visitor for CodeGenVisitor {
                         }
                     }
                     NodeType::ArrayOf(t) => {
-                        if let Some(size_node) = node.get_array_type_len_child() {
-                            let type_id =
-                                CodeGenVisitor::type_conversion_from_node_type(node_t.clone());
-                            let size_addr = size_node.get_result_addr();
-                            let size_text = format!("int {}_size = {};\n", target_id, size_addr);
-                            let alloc_text = format!(
-                                "{} = ({}) malloc({} * sizeof({}));\n",
-                                target_id, type_id, size_addr, type_id
-                            );
-                            self.buffer.push_str(size_text.as_str());
-                            self.buffer.push_str(alloc_text.as_str());
-                            if t.as_str() == "string" {
-                                let str_alloc_text =
-                                    format!("alloc_str_array({}, {});\n", target_id, size_addr);
-                                let str_free_text =
-                                    format!("free_str_array({}, {});\n", target_id, size_addr);
-                                self.buffer.push_str(str_alloc_text.as_str());
-                                self.free_buffer.push_str(str_free_text.as_str());
+                        if let Some(type_child) = node.get_type_child() {
+                            if let Some(size_node) = type_child.get_type_id_len_child() {
+                                let type_id =
+                                    CodeGenVisitor::type_conversion_from_node_type(node_t.clone());
+                                let size_addr = size_node.get_result_addr();
+                                let size_text =
+                                    format!("int {}_size = {};\n", target_id, size_addr);
+                                let alloc_text = format!(
+                                    "{} = ({}) malloc({} * sizeof({}));\n",
+                                    target_id, type_id, size_addr, type_id
+                                );
+                                self.buffer.push_str(size_text.as_str());
+                                self.buffer.push_str(alloc_text.as_str());
+                                if t.as_str() == "string" {
+                                    let str_alloc_text =
+                                        format!("alloc_str_array({}, {});\n", target_id, size_addr);
+                                    let str_free_text =
+                                        format!("free_str_array({}, {});\n", target_id, size_addr);
+                                    self.buffer.push_str(str_alloc_text.as_str());
+                                    self.free_buffer.push_str(str_free_text.as_str());
+                                }
+                                let free_text = format!("free({});\n", target_id);
+                                self.free_buffer.push_str(free_text.as_str());
                             }
-                            let free_text = format!("free({});\n", target_id);
-                            self.free_buffer.push_str(free_text.as_str());
                         }
                     }
                     NodeType::Unit => (),
@@ -406,12 +408,12 @@ impl Visitor for CodeGenVisitor {
         match node.get_type() {
             NodeType::Unit => (),
             NodeType::Simple(_type_id) => {
-                let lhs_text = CodeGenVisitor::get_lhs_text_for_item(node.get_type(),
-                node.get_result_addr());
+                let lhs_text =
+                    CodeGenVisitor::get_lhs_text_for_item(node.get_type(), node.get_result_addr());
                 let text = format!("{};\n", lhs_text);
                 self.declaration_buffer.push_str(text.as_str());
             }
-            NodeType::ArrayOf(_type_id) => () // TODO: arrays as return values
+            NodeType::ArrayOf(_type_id) => (), // TODO: arrays as return values
         };
         match node.get_token().lexeme.as_str() {
             "writeln" => {
@@ -494,6 +496,19 @@ impl Visitor for CodeGenVisitor {
                 self.buffer.push_str(start_jump_text.as_str());
             }
             self.buffer.push_str(format!("{}:\n", end_label).as_str());
+        }
+    }
+
+    fn visit_assert(&mut self, node: &mut AssertNode) {
+        for child in node.get_children() {
+            child.accept(self);
+        }
+        if let Some(condition) = node.get_condition() {
+            let cond_addr = condition.get_result_addr();
+            let line = node.get_token().row;
+            let assert_msg = format!("On line {}\\n", line);
+            let text = format!("mp_assert({}, \"{}\");\n", cond_addr, assert_msg);
+            self.buffer.push_str(text.as_str());
         }
     }
 }

@@ -564,4 +564,14 @@ mod test {
         let token = scanner.get_next_token();
         assert_eq!("var", token.lexeme.as_str());
     }
+
+    #[test]
+    fn test_scan_not_equal() {
+        let text = String::from("<>");
+        let mut scanner = get_scanner(text);
+        let t = scanner.get_next_token();
+        assert!(variant_eq(&TokenKind::NotEqual, &t.token_kind));
+        assert_eq!("<>", t.lexeme.as_str());
+    }
+
 }

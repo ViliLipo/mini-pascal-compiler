@@ -1,6 +1,16 @@
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+
+void mp_assert(int condition, char* message) {
+  if (! condition) {
+    printf("Assert failed:\n");
+    printf("\t%s", message);
+    exit(0);
+  }
+}
 
 void alloc_str_array(char** str_array, int size) {
   int i = 0;
