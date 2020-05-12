@@ -1,5 +1,4 @@
 use crate::scanner::Token;
-use crate::scanner::TokenKind;
 use crate::visitor::Visitor;
 use std::any::Any;
 use std::fmt;
@@ -71,7 +70,6 @@ impl Clone for NodeType {
 pub trait Node {
     fn get_token(&self) -> Token;
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>>;
-    fn add_child(&mut self, child: Box<dyn Node>);
     fn accept(&mut self, visitor: &mut dyn Visitor);
     fn as_any(&self) -> &dyn Any;
     fn get_type(&self) -> NodeType;
@@ -83,20 +81,12 @@ pub trait Node {
 pub struct Program {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    id_child: Identifier,
 }
 
 impl Program {
-    pub fn get_id_child(&self) -> Option<&Variable> {
-        self.get_child(0)
-    }
-    fn get_child(&self, no: usize) -> Option<&Variable> {
-        match self.children.get(no) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
-                Some(var) => Some(var),
-                None => None,
-            },
-            None => None,
-        }
+    pub fn get_id_child(&self) -> &Identifier {
+        &self.id_child
     }
 }
 
@@ -106,9 +96,6 @@ impl Node for Program {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_program(self);
@@ -133,23 +120,16 @@ impl Node for Program {
 pub struct Declaration {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    id_child: Identifier,
+    type_child: Identifier,
 }
 
 impl Declaration {
-    pub fn get_id_child(&self) -> Option<&Identifier> {
-        self.get_child(0)
+    pub fn get_id_child(&self) -> &Identifier {
+        &self.id_child
     }
-    fn get_child(&self, no: usize) -> Option<&Identifier> {
-        match self.children.get(no) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Identifier>() {
-                Some(var) => Some(var),
-                None => None,
-            },
-            None => None,
-        }
-    }
-    pub fn get_type_child(&self) -> Option<&Identifier> {
-        self.get_child(1)
+    pub fn get_type_child(&self) -> &Identifier {
+        &self.type_child
     }
 }
 
@@ -159,9 +139,6 @@ impl Node for Declaration {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_declaration(self);
@@ -206,9 +183,6 @@ impl Node for Block {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_block(self);
     }
@@ -232,23 +206,16 @@ impl Node for Block {
 pub struct Assignment {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    rhs_child: Box<dyn Node>,
+    lhs_child: Variable,
 }
 
 impl Assignment {
-    pub fn get_rhs_child(&self) -> Option<&Box<dyn Node>> {
-        match self.children.get(1) {
-            Some(child) => Some(child),
-            None => None,
-        }
+    pub fn get_rhs_child(&self) -> &Box<dyn Node> {
+        &self.rhs_child
     }
-    pub fn get_lhs_child(&self) -> Option<&Variable> {
-        match self.children.get(0) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
-                Some(var) => Some(var),
-                None => None,
-            },
-            None => None,
-        }
+    pub fn get_lhs_child(&self) -> &Variable {
+        &self.lhs_child
     }
 }
 impl Node for Assignment {
@@ -257,9 +224,6 @@ impl Node for Assignment {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_assignment(self);
@@ -286,14 +250,16 @@ pub struct Expression {
     children: Vec<Box<dyn Node>>,
     type_id: NodeType,
     result_addr: String,
+    rhs_child: Box<dyn Node>,
+    lhs_child: Box<dyn Node>,
 }
 
 impl Expression {
-    pub fn get_lhs_child(&self) -> Option<&Box<dyn Node>> {
-        self.children.get(0)
+    pub fn get_lhs_child(&self) -> &Box<dyn Node> {
+        &self.lhs_child
     }
-    pub fn get_rhs_child(&self) -> Option<&Box<dyn Node>> {
-        self.children.get(1)
+    pub fn get_rhs_child(&self) -> &Box<dyn Node> {
+        &self.rhs_child
     }
 }
 
@@ -303,9 +269,6 @@ impl Node for Expression {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_expression(self);
@@ -333,14 +296,12 @@ pub struct Variable {
     children: Vec<Box<dyn Node>>,
     type_id: NodeType,
     result_addr: String,
+    index_child: Option<Box<dyn Node>>,
 }
 
 impl Variable {
-    pub fn has_index(&self) -> bool {
-        self.children.len() > 0
-    }
-    pub fn get_index_child(&self) -> Option<&Box<dyn Node>> {
-        self.children.get(0)
+    pub fn get_index_child(&self) -> &Option<Box<dyn Node>> {
+        &self.index_child
     }
 }
 
@@ -350,9 +311,6 @@ impl Node for Variable {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_variable(self);
@@ -377,12 +335,13 @@ impl Node for Variable {
 pub struct Identifier {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    type_id_len: Option<Box<dyn Node>>,
 }
 
 // For some reason i decided to overload this node with the type information
 impl Identifier {
-    pub fn get_type_id_len_child(&self) -> Option<&Box<dyn Node>> {
-        self.children.get(0)
+    pub fn get_type_id_len_child(&self) -> &Option<Box<dyn Node>> {
+        &self.type_id_len
     }
 }
 
@@ -395,9 +354,6 @@ impl Node for Identifier {
         self
     }
 
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.push(child);
-    }
 
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         self.children.as_mut()
@@ -426,9 +382,9 @@ impl Node for Identifier {
 
 pub struct Literal {
     token: Token,
-    children: Vec<Box<dyn Node>>,
     type_id: NodeType,
     result_addr: String,
+    children: Vec<Box<dyn Node>>,
 }
 
 impl Node for Literal {
@@ -436,10 +392,7 @@ impl Node for Literal {
         self.token.clone()
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
-        &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
+        &mut Vec::new()
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_literal(self);
@@ -466,6 +419,7 @@ pub struct Call {
     children: Vec<Box<dyn Node>>,
     type_id: NodeType,
     result_addr: String,
+    arguments: Box<dyn Node>,
 }
 
 impl Call {
@@ -476,8 +430,8 @@ impl Call {
         }
     }
 
-    pub fn get_arguments(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.get_child(0)
+    pub fn get_arguments(&mut self) -> &mut Box<dyn Node> {
+        &mut self.arguments
     }
 }
 
@@ -487,9 +441,6 @@ impl Node for Call {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_call(self);
@@ -514,17 +465,20 @@ impl Node for Call {
 pub struct IfNode {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    condition: Box<dyn Node>,
+    body: Box<dyn Node>,
+    else_body: Option<Box<dyn Node>>
 }
 
 impl IfNode {
-    pub fn get_condition(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(0)
+    pub fn get_condition(&mut self) -> &mut Box<dyn Node> {
+        &mut self.condition
     }
-    pub fn get_body(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(1)
+    pub fn get_body(&mut self) -> &mut Box<dyn Node> {
+        &mut self.body
     }
-    pub fn get_else_body(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(2)
+    pub fn get_else_body(&mut self) -> &mut Option<Box<dyn Node>> {
+        &mut self.else_body
     }
 }
 
@@ -534,9 +488,6 @@ impl Node for IfNode {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_if(self);
@@ -562,14 +513,16 @@ impl Node for IfNode {
 pub struct WhileNode {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    condition: Box<dyn Node>,
+    body: Box<dyn Node>,
 }
 
 impl WhileNode {
-    pub fn get_condition(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(0)
+    pub fn get_condition(&mut self) -> &mut Box<dyn Node> {
+        &mut self.condition
     }
-    pub fn get_body(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(1)
+    pub fn get_body(&mut self) -> &mut Box<dyn Node> {
+        &mut self.body
     }
 }
 
@@ -579,9 +532,6 @@ impl Node for WhileNode {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_while(self);
@@ -604,20 +554,61 @@ impl Node for WhileNode {
     }
 }
 
-pub struct ParameterNode {
+pub struct ParametersNode {
     token: Token,
     children: Vec<Box<dyn Node>>,
 }
 
-impl Node for ParameterNode {
+impl Node for ParametersNode {
     fn get_token(&self) -> Token {
         self.token.clone()
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn set_type(&mut self, _type_id: NodeType) {
+        ()
+    }
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+    fn set_result_addr(&mut self, _addr: String) {
+        ()
+    }
+    fn get_result_addr(&self) -> String {
+        String::new()
+    }
+}
+
+pub struct ParametersItemNode {
+    token: Token,
+    identifier: Box<dyn Node>,
+    type_identifier: Box<dyn Node>,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl ParametersItemNode {
+    pub fn get_identifier(&self) -> Box<dyn Node> {
+        self.identifier
+    }
+
+    pub fn get_type(&self) -> Box<dyn Node> {
+        self.type_identifier
+    }
+}
+
+impl Node for ParametersItemNode {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit(self);
@@ -651,11 +642,40 @@ impl Node for ArgumentNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_argument(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn set_type(&mut self, _type_id: NodeType) {
+        ()
+    }
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+    fn set_result_addr(&mut self, _addr: String) {
+        ()
+    }
+    fn get_result_addr(&self) -> String {
+        String::new()
+    }
+}
+
+pub struct FunctionNode {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl Node for FunctionNode {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit_function(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
@@ -677,14 +697,14 @@ impl Node for ArgumentNode {
 pub struct AssertNode {
     token: Token,
     children: Vec<Box<dyn Node>>,
+    condition: Box<dyn Node>,
 }
 
 impl AssertNode {
-    pub fn get_condition(&mut self) -> Option<&mut Box<dyn Node>> {
-        self.children.get_mut(0)
+    pub fn get_condition(&mut self) -> &mut Box<dyn Node> {
+        &mut self.condition
     }
 }
-
 
 impl Node for AssertNode {
     fn get_token(&self) -> Token {
@@ -692,9 +712,6 @@ impl Node for AssertNode {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_assert(self);
@@ -728,9 +745,6 @@ impl Node for ErrorNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit(self);
     }
@@ -752,99 +766,6 @@ impl Node for ErrorNode {
     }
 }
 
-pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
-    let children = Vec::new();
-    match token.token_kind {
-        TokenKind::Program => Box::from(Program { token, children }),
-        TokenKind::Begin => Box::from(Block {
-            token,
-            children,
-            scope_no: -1,
-        }),
-        TokenKind::Var => Box::from(Declaration {
-            token,
-            children,
-        }),
-        TokenKind::Assign => Box::from(Assignment {
-            token,
-            children,
-        }),
-        TokenKind::Identifier => match flag {
-            "var" => Box::from(Variable {
-                token,
-                children,
-                type_id: NodeType::Unit,
-                result_addr: String::new(),
-            }),
-            "call" => Box::from(Call {
-                token,
-                children,
-                type_id: NodeType::Unit,
-                result_addr: String::new(),
-            }),
-            _ => Box::from(Identifier {
-                token,
-                children,
-            }),
-        },
-        TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
-            Box::from(Literal {
-                token,
-                children,
-                type_id: NodeType::Unit,
-                result_addr: String::new(),
-            })
-        }
-        TokenKind::Plus
-        | TokenKind::Minus
-        | TokenKind::Multi
-        | TokenKind::Division
-        | TokenKind::Modulo
-        | TokenKind::SmallerThan
-        | TokenKind::LargerThan
-        | TokenKind::ESmallerThan
-        | TokenKind::ELargerThan
-        | TokenKind::Equal
-        | TokenKind::NotEqual
-        | TokenKind::Or
-        | TokenKind::And => Box::from(Expression {
-            token,
-            children,
-            type_id: NodeType::Unit,
-            result_addr: String::new(),
-        }),
-        TokenKind::If => Box::from(IfNode {
-            token,
-            children,
-        }),
-        TokenKind::While => Box::from(WhileNode {
-            token,
-            children,
-        }),
-        TokenKind::OpenBracket => match flag {
-            "params" => Box::from(ParameterNode {
-                token,
-                children,
-            }),
-            "args" => Box::from(ArgumentNode {
-                token,
-                children,
-            }),
-            _ => Box::from(ErrorNode {
-                token,
-                children,
-            }),
-        },
-        TokenKind::Assert => Box::from(AssertNode {
-            token,
-            children,
-        }),
-        _ => Box::from(ErrorNode {
-            token: token,
-            children,
-        }),
-    }
-}
 
 pub fn get_args_node(token: Token) -> Box<dyn Node> {
     Box::from(ArgumentNode {

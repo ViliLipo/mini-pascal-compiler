@@ -11,6 +11,7 @@ mod printvisitor;
 mod semanticvisitor;
 mod symboltable;
 mod codegenvisitor;
+mod nodefactory;
 
 
 fn main() -> std::io::Result<()>{

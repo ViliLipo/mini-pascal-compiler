@@ -3,6 +3,7 @@ use crate::ast::*;
 pub trait Visitor {
     fn visit(&mut self, node: &mut dyn Node);
     fn visit_program(&mut self, node: &mut Program);
+    fn visit_function(&mut self, node: &mut FunctionNode);
     fn visit_block(&mut self, node: &mut Block);
     fn visit_declaration(&mut self, node: &mut Declaration);
     fn visit_assignment(&mut self, node: &mut Assignment);
@@ -15,4 +16,6 @@ pub trait Visitor {
     fn visit_while(&mut self, node: &mut WhileNode);
     fn visit_argument(&mut self, node: &mut ArgumentNode);
     fn visit_assert(&mut self, node: &mut AssertNode);
+    fn visit_parameters(&mut self, node: &mut ParametersNode);
+    fn visit_parameter_item(&mut self, node: &mut ParametersItemNode);
 }

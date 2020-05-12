@@ -1,6 +1,6 @@
-use crate::ast::get_args_node;
-use crate::ast::make_node;
-use crate::ast::Node;
+use crate::ast::*;
+use crate::nodefactory::Flags;
+use crate::nodefactory::NodeFactory;
 use crate::scanner::Scanner;
 use crate::scanner::Token;
 use crate::scanner::TokenKind;
@@ -21,11 +21,28 @@ impl Parser {
         self.current_token = self.scanner.get_next_token();
     }
 
+    fn skip_delimiter(&mut self, tokenkind: TokenKind) -> Result<(), String> {
+        if self.current_token.token_kind == tokenkind {
+            self.next_token();
+            Ok(())
+        } else {
+            Err(String::from(format!(
+                "Expected {} got {}",
+                tokenkind, self.current_token.token_kind
+            )))
+        }
+    }
+
     fn match_token(&mut self, tokenkind: TokenKind) -> Result<Box<dyn Node>, String> {
         if self.current_token.token_kind == tokenkind {
-            let node = make_node(self.current_token.clone(), "");
-            self.next_token();
-            Ok(node)
+            let mut nodefactory = NodeFactory::new();
+            nodefactory.set_token(self.current_token.clone());
+            if let Some(node) = nodefactory.build_node() {
+                self.next_token();
+                Ok(node)
+            } else {
+                Err(String::from(format!("Could not build node")))
+            }
         } else {
             Err(String::from(format!(
                 "Expected {} got {}",
@@ -36,46 +53,77 @@ impl Parser {
 
     pub fn program(&mut self) -> Option<Box<dyn Node>> {
         self.next_token();
-        match self.match_token(TokenKind::Program) {
-            Ok(mut main_node) => {
-                match self.match_token(TokenKind::Identifier) {
-                    Ok(id) => main_node.add_child(id),
-                    Err(msg) => {
-                        self.errors.push(msg);
-                        return None;
-                    }
+        let mut nf = NodeFactory::new();
+        if let TokenKind::Program = self.current_token.token_kind {
+            nf.set_token(self.current_token.clone());
+            match self.match_token(TokenKind::Identifier) {
+                Ok(id) => nf.add_child(id),
+                Err(msg) => {
+                    self.errors.push(msg);
+                    return None;
                 }
-                match self.match_token(TokenKind::SemiColon) {
-                    Ok(_delim) => (),
-                    Err(msg) => {
-                        self.errors.push(msg);
-                        return None;
-                    }
-                }
-                match self.block() {
-                    Some(block) => main_node.add_child(block),
-                    None => {
-                        return None;
-                    }
-                };
-                match self.match_token(TokenKind::Dot) {
-                    Ok(_node) => (),
-                    Err(msg) => self.errors.push(msg),
-                };
-                Some(main_node)
-            }
-            Err(msg) => {
+            };
+            if let Err(msg) = self.skip_delimiter(TokenKind::SemiColon) {
                 self.errors.push(msg);
+                return None;
+            };
+            match self.block() {
+                Some(block) => nf.add_child(block),
+                None => {
+                    return None;
+                }
+            };
+            if let Err(msg) = self.skip_delimiter(TokenKind::Dot) {
+                self.errors.push(msg);
+            };
+            if let Some(main_node) = nf.build_node() {
+                Some(main_node)
+            } else {
                 None
             }
+        } else {
+            None
         }
     }
 
     fn parameters(&mut self) -> Option<Box<dyn Node>> {
-        None
+        let mut nf = NodeFactory::new();
+        nf.set_flag(Flags::Params);
+        nf.set_token(self.current_token.clone());
+        self.next_token();
+        loop {
+            if let Ok(identifier) = self.match_token(TokenKind::Identifier) {
+                match self.match_token(TokenKind::Colon) {
+                    Ok(_delim) => match self.type_construct() {
+                        Some(type_identifier) => {
+                            let item = ParametersItemNode {
+                                identifier,
+                                type_identifier,
+                                token: self.current_token.clone(),
+                                children: Vec::new(),
+                            };
+                            nf.add_child(Box::from(item));
+                            if let Err(msg) = self.match_token(TokenKind::Comma) {
+                                self.errors.push(msg);
+                            }
+                        }
+                        _ => (),
+                    },
+                    Err(msg) => self.errors.push(msg),
+                };
+            } else {
+                break;
+            }
+        }
+        if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
+            self.errors.push(msg);
+        }
+        nf.build_node()
     }
 
     fn function(&mut self) -> Option<Box<dyn Node>> {
+        None
+        /*
         if let TokenKind::Function = self.current_token.token_kind {
             let mut main_node = make_node(self.current_token.clone(), "");
             self.next_token();
@@ -90,18 +138,31 @@ impl Parser {
                     if let Some(param_child) = self.parameters() {
                         main_node.add_child(param_child);
                     }
-                    if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
+                    if let Err(msg) = self.match_token(TokenKind::Colon) {
                         self.errors.push(msg);
                         None
                     } else {
-                        if let Err(msg) = self.match_token(TokenKind::Colon) {
-                            self.errors.push(msg);
-                            None
-                        } else {
-                            if let TokenKind::Identifier = self.current_token.token_kind {
-                                let type_child = make_node(self.current_token.clone(), "");
+                        if let TokenKind::Identifier = self.current_token.token_kind {
+                            let type_child = make_node(self.current_token.clone(), "");
+                            main_node.add_child(type_child);
+                            if let Err(msg) = self.match_token(TokenKind::SemiColon) {
+                                self.errors.push(msg);
+                                None
+                            } else {
+                                if let Some(block) = self.block() {
+                                    main_node.add_child(block);
+                                    if let Err(msg) = self.match_token(TokenKind::SemiColon) {
+                                        self.errors.push(msg);
+                                        None
+                                    } else {
+                                        Some(main_node)
+                                    }
+                                } else {
+                                    None
+                                }
                             }
-                            Some(main_node)
+                        } else {
+                            None
                         }
                     }
                 }
@@ -113,7 +174,7 @@ impl Parser {
             }
         } else {
             None
-        }
+        }*/
     }
 
     fn procedure(&mut self) -> Option<Box<dyn Node>> {
@@ -121,31 +182,30 @@ impl Parser {
     }
 
     fn block(&mut self) -> Option<Box<dyn Node>> {
-        match self.match_token(TokenKind::Begin) {
-            Ok(mut main_node) => {
-                loop {
-                    match self.current_token.token_kind {
-                        TokenKind::End => {
-                            self.next_token();
-                            break;
-                        }
-                        TokenKind::SemiColon => self.next_token(),
-                        TokenKind::Eof => {
-                            self.errors.push(String::from("Unexpected eof"));
-                            break;
-                        }
-                        _ => match self.statement() {
-                            Some(stmnt) => main_node.add_child(stmnt),
-                            None => self.next_token(),
-                        },
+        if let TokenKind::Begin = self.current_token.token_kind {
+            let mut nf = NodeFactory::new();
+            nf.set_token(self.current_token.clone());
+            self.next_token();
+            loop {
+                match self.current_token.token_kind {
+                    TokenKind::End => {
+                        self.next_token();
+                        break;
                     }
+                    TokenKind::SemiColon => self.next_token(),
+                    TokenKind::Eof => {
+                        self.errors.push(String::from("Unexpected eof"));
+                        break;
+                    }
+                    _ => match self.statement() {
+                        Some(stmnt) => nf.add_child(stmnt),
+                        None => self.next_token(),
+                    },
                 }
-                Some(main_node)
             }
-            Err(msg) => {
-                self.errors.push(msg);
-                None
-            }
+            nf.build_node()
+        } else {
+            None
         }
     }
 
@@ -162,60 +222,65 @@ impl Parser {
     }
 
     fn while_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        match self.match_token(TokenKind::While) {
-            Ok(mut while_node) => {
-                if let Some(expr_node) = self.expression() {
-                    while_node.add_child(expr_node);
-                    if let Ok(_do) = self.match_token(TokenKind::Do) {
-                        if let Some(body) = self.statement() {
-                            while_node.add_child(body);
-                        }
+        if let TokenKind::While = self.current_token.token_kind {
+            let mut nf = NodeFactory::new();
+            nf.set_token(self.current_token.clone());
+            self.next_token();
+            if let Some(condition) = self.expression() {
+                nf.add_child(condition);
+                if let Err(msg) = self.skip_delimiter(TokenKind::Do) {
+                    self.errors.push(msg);
+                    None
+                } else {
+                    if let Some(body) = self.statement() {
+                        nf.add_child(body);
+                        nf.build_node()
+                    } else {
+                        None
                     }
                 }
-                Some(while_node)
-            }
-            Err(msg) => {
-                self.errors.push(msg);
+            } else {
                 None
             }
+        } else {
+            None
         }
     }
 
     fn if_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        match self.match_token(TokenKind::If) {
-            Ok(mut if_node) => {
-                if let Some(expr_node) = self.expression() {
-                    if_node.add_child(expr_node);
-                    if let Ok(_then) = self.match_token(TokenKind::Then) {
-                        if let Some(stmnt) = self.statement() {
-                            if_node.add_child(stmnt);
-                        }
-                        match self.current_token.token_kind {
-                            TokenKind::Else => {
-                                self.next_token();
-                                if let Some(else_stmnt) = self.statement() {
-                                    if_node.add_child(else_stmnt);
-                                }
-                            }
-                            _ => (),
-                        }
-                    }
+        if let TokenKind::If = self.current_token.token_kind {
+            let mut nf = NodeFactory::new();
+            nf.set_token(self.current_token.clone());
+            self.next_token();
+            if let Some(condition) = self.expression() {
+                nf.add_child(condition);
+                if let Err(msg) = self.skip_delimiter(TokenKind::Then) {
+                    self.errors.push(msg);
+                    return None;
                 }
-                Some(if_node)
-            }
-            Err(msg) => {
-                self.errors.push(msg);
-                None
+                if let Some(body) = self.statement() {
+                    nf.add_child(body);
+                    if let Err(msg) = self.skip_delimiter(TokenKind::Then) {
+                        self.errors.push(msg);
+                        return None;
+                    }
+                    if let Some(else_stmnt) = self.statement() {
+                        nf.add_child(else_stmnt);
+                    }
+                    return nf.build_node();
+                }
             }
         }
+        None
     }
 
     fn type_construct(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
             TokenKind::Identifier => {
-                let type_node = make_node(self.current_token.clone(), "");
+                let mut nf = NodeFactory::new();
+                nf.set_token(self.current_token.clone());
                 self.next_token();
-                Some(type_node)
+                nf.build_node()
             }
             TokenKind::Array => {
                 self.next_token();
@@ -227,12 +292,14 @@ impl Parser {
                     if let Err(msg) = self.match_token(TokenKind::CloseSquareBracket) {
                         self.errors.push(msg);
                         None
-                    } else if let Err(msg) = self.match_token(TokenKind::Of) {
+                    } else if let Err(msg) = self.skip_delimiter(TokenKind::Of) {
                         self.errors.push(msg);
                         return None;
-                    } else if let Ok(mut id_node) = self.match_token(TokenKind::Identifier) {
-                        id_node.add_child(expr_node);
-                        Some(id_node)
+                    } else if let TokenKind::Identifier = self.current_token.token_kind {
+                        let mut nf = NodeFactory::new();
+                        nf.add_child(expr_node);
+                        nf.set_token(self.current_token.clone());
+                        nf.build_node()
                     } else {
                         None
                     }
@@ -248,32 +315,32 @@ impl Parser {
     }
 
     fn declaration_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        match self.match_token(TokenKind::Var) {
-            Ok(mut main_node) => {
-                match self.match_token(TokenKind::Identifier) {
-                    Ok(id_node) => {
-                        main_node.add_child(id_node);
-                    }
-                    Err(msg) => {
+        if let TokenKind::Var = self.current_token.token_kind {
+            let mut nf = NodeFactory::new();
+            nf.set_token(self.current_token.clone());
+            self.next_token();
+            match self.match_token(TokenKind::Identifier) {
+                Ok(id) => {
+                    nf.add_child(id);
+                    if let Err(msg) = self.skip_delimiter(TokenKind::Colon) {
                         self.errors.push(msg);
-                        return None;
+                        None
+                    } else {
+                        if let Some(type_node) = self.type_construct() {
+                            nf.add_child(type_node);
+                            nf.build_node()
+                        } else {
+                            None
+                        }
                     }
-                };
-                match self.match_token(TokenKind::Colon) {
-                    Ok(_delim) => (),
-                    Err(msg) => self.errors.push(msg),
-                };
-                if let Some(type_node) = self.type_construct() {
-                    main_node.add_child(type_node);
-                    Some(main_node)
-                } else {
+                }
+                Err(msg) => {
+                    self.errors.push(msg);
                     None
                 }
             }
-            Err(msg) => {
-                self.errors.push(msg);
-                None
-            }
+        } else {
+            None
         }
     }
 
@@ -283,13 +350,14 @@ impl Parser {
             Some(id_construct) => match self.current_token.token_kind {
                 TokenKind::Assign => match id_construct {
                     IdExpression::Variable(node) => {
-                        let mut main_node = make_node(self.current_token.clone(), "");
+                        let mut nf = NodeFactory::new();
+                        nf.set_token(self.current_token.clone());
                         self.next_token();
-                        main_node.add_child(node);
+                        nf.add_child(node);
                         match self.expression() {
                             Some(expr_node) => {
-                                main_node.add_child(expr_node);
-                                Some(main_node)
+                                nf.add_child(expr_node);
+                                nf.build_node()
                             }
                             None => None,
                         }
@@ -317,16 +385,17 @@ impl Parser {
     }
 
     fn assert_stmnt(&mut self) -> Option<Box<dyn Node>> {
-        let mut main_node = make_node(self.current_token.clone(), "");
+        let mut nf = NodeFactory::new();
+        nf.set_token(self.current_token.clone());
         self.next_token();
         match self.match_token(TokenKind::OpenBracket) {
             Ok(_delim) => {
                 if let Some(expr_node) = self.expression() {
-                    main_node.add_child(expr_node);
+                    nf.add_child(expr_node);
                     if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
                         self.errors.push(msg);
                     }
-                    Some(main_node)
+                    nf.build_node()
                 } else {
                     let row = self.current_token.row;
                     let text = format!("Assert requires expression on line: {}", row);
@@ -350,13 +419,14 @@ impl Parser {
                 | TokenKind::LargerThan
                 | TokenKind::ESmallerThan
                 | TokenKind::ELargerThan => {
-                    let mut expr_node = make_node(self.current_token.clone(), "");
+                    let mut nf = NodeFactory::new();
+                    nf.set_token(self.current_token.clone());
                     self.next_token();
-                    expr_node.add_child(left_sub_expr);
+                    nf.add_child(left_sub_expr);
                     match self.simple_expression() {
                         Some(right_sub_expr) => {
-                            expr_node.add_child(right_sub_expr);
-                            Some(expr_node)
+                            nf.add_child(right_sub_expr);
+                            nf.build_node()
                         }
                         None => None,
                     }
@@ -371,13 +441,14 @@ impl Parser {
         match self.term() {
             Some(term_node) => match self.current_token.token_kind {
                 TokenKind::Plus | TokenKind::Minus | TokenKind::Or => {
-                    let mut expr_node = make_node(self.current_token.clone(), "");
+                    let mut nf = NodeFactory::new();
+                    nf.set_token(self.current_token.clone());
                     self.next_token();
-                    expr_node.add_child(term_node);
+                    nf.add_child(term_node);
                     match self.term() {
                         Some(right_term_node) => {
-                            expr_node.add_child(right_term_node);
-                            Some(expr_node)
+                            nf.add_child(right_term_node);
+                            nf.build_node()
                         }
                         None => None,
                     }
@@ -392,13 +463,14 @@ impl Parser {
         match self.factor() {
             Some(lhs_node) => match self.current_token.token_kind {
                 TokenKind::Multi | TokenKind::Division | TokenKind::Modulo | TokenKind::And => {
-                    let mut term_node = make_node(self.current_token.clone(), "");
+                    let mut nf = NodeFactory::new();
+                    nf.set_token(self.current_token.clone());
                     self.next_token();
-                    term_node.add_child(lhs_node);
+                    nf.add_child(lhs_node);
                     match self.factor() {
                         Some(rhs_node) => {
-                            term_node.add_child(rhs_node);
-                            Some(term_node)
+                            nf.add_child(rhs_node);
+                            nf.build_node()
                         }
                         None => None,
                     }
@@ -419,9 +491,10 @@ impl Parser {
                 None => None,
             },
             TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
-                let node = make_node(self.current_token.clone(), "");
+                let mut nf = NodeFactory::new();
+                nf.set_token(self.current_token.clone());
                 self.next_token();
-                Some(node)
+                nf.build_node()
             }
             TokenKind::OpenBracket => {
                 self.next_token();
@@ -429,8 +502,8 @@ impl Parser {
                     Some(expr_node) => Some(expr_node),
                     None => None,
                 };
-                match self.match_token(TokenKind::CloseBracket) {
-                    Ok(_delim) => (),
+                match self.skip_delimiter(TokenKind::CloseBracket) {
+                    Ok(i) => (),
                     Err(msg) => self.errors.push(msg),
                 }
                 node
@@ -446,41 +519,73 @@ impl Parser {
                 self.next_token();
                 match self.current_token.token_kind {
                     TokenKind::OpenSquareBracket => {
-                        let mut node = make_node(old_token, "var");
+                        let mut nf = NodeFactory::new();
+                        nf.set_token(old_token);
+                        nf.set_flag(Flags::Var);
                         self.next_token();
                         if let Some(expr) = self.expression() {
-                            node.add_child(expr);
+                            nf.add_child(expr);
                         }
                         match self.match_token(TokenKind::CloseSquareBracket) {
                             Ok(_delim) => (),
                             Err(msg) => self.errors.push(msg),
                         }
-                        Some(IdExpression::Variable(node))
+                        if let Some(node) = nf.build_node() {
+                            Some(IdExpression::Variable(node))
+                        } else {
+                            None
+                        }
                     }
                     TokenKind::OpenBracket => {
-                        let mut node = make_node(old_token, "call");
+                        let mut nf = NodeFactory::new();
+                        nf.set_token(old_token);
+                        nf.set_flag(Flags::Call);
                         if let Some(args) = self.arguments() {
-                            node.add_child(args);
+                            nf.add_child(args);
                         }
-                        Some(IdExpression::Call(node))
-                    }
-                    TokenKind::Dot => {
-                        self.next_token();
-                        let arg = make_node(old_token, "var");
-                        if let TokenKind::Identifier = self.current_token.token_kind {
-                            let mut node = make_node(self.current_token.clone(), "call");
-                            self.next_token();
-                            let mut args = get_args_node(self.current_token.clone());
-                            args.add_child(arg);
-                            node.add_child(Box::from(args));
+                        if let Some(node) = nf.build_node() {
                             Some(IdExpression::Call(node))
                         } else {
                             None
                         }
                     }
+                    TokenKind::Dot => {
+                        self.next_token();
+                        let mut nf1 = NodeFactory::new();
+                        nf1.set_token(old_token);
+                        nf1.set_flag(Flags::Var);
+                        if let Some(arg) = nf1.build_node() {
+                            if let TokenKind::Identifier = self.current_token.token_kind {
+                                let nf2 = NodeFactory::new();
+                                nf2.set_token(self.current_token.clone());
+                                nf2.set_flag(Flags::Call);
+                                self.next_token();
+                                let args = ArgumentNode {
+                                    token: self.current_token.clone(),
+                                    children: vec![arg],
+                                };
+                                nf2.add_child(Box::from(args));
+                                if let Some(node) = nf2.build_node() {
+                                    Some(IdExpression::Call(node))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    }
                     _ => {
-                        let node = make_node(old_token, "var");
-                        Some(IdExpression::Variable(node))
+                        let mut nf = NodeFactory::new();
+                        nf.set_flag(Flags::Var);
+                        nf.set_token(old_token.clone());
+                        if let Some(node) = nf.build_node() {
+                            Some(IdExpression::Variable(node))
+                        } else {
+                            None
+                        }
                     }
                 }
             }
@@ -491,16 +596,17 @@ impl Parser {
     fn arguments(&mut self) -> Option<Box<dyn Node>> {
         match self.current_token.token_kind {
             TokenKind::OpenBracket => {
-                let mut main_node = make_node(self.current_token.clone(), "args");
+                let mut nf = NodeFactory::new();
+                nf.set_token(self.current_token.clone());
+                nf.set_flag(Flags::Args);
                 self.next_token();
                 if let Some(expr) = self.expression() {
-                    main_node.add_child(expr);
-                    println!("Added expr child");
+                    nf.add_child(expr);
                     loop {
                         if let TokenKind::Comma = self.current_token.token_kind {
                             self.next_token();
                             if let Some(expr) = self.expression() {
-                                main_node.add_child(expr)
+                                nf.add_child(expr)
                             }
                         } else {
                             break;
@@ -510,8 +616,7 @@ impl Parser {
                 if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
                     self.errors.push(msg)
                 }
-                println!("Parsed arguments");
-                Some(main_node)
+                nf.build_node()
             }
             _ => None,
         }

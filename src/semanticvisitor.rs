@@ -162,21 +162,25 @@ impl Visitor for SemanticVisitor {
     }
 
     fn visit_program(&mut self, node: &mut Program) {
-        if let Some(name_child) = node.get_id_child() {
-            let prog_id = name_child.get_token().lexeme.clone();
-            self.symboltable.add_entry(Entry {
-                name: prog_id,
-                category: ConstructCategory::Program,
-                entry_type: NodeType::Simple(String::from("integer")),
-                value: String::from("PROGRAM"),
-                scope_number: 0,
-                address: String::from(""),
-            });
-        }
+        let name_child = node.get_id_child();
+        let prog_id = name_child.get_token().lexeme.clone();
+        self.symboltable.add_entry(Entry {
+            name: prog_id,
+            category: ConstructCategory::Program,
+            entry_type: NodeType::Simple(String::from("integer")),
+            value: String::from("PROGRAM"),
+            scope_number: 0,
+            address: String::from(""),
+        });
         for child in node.get_children() {
             child.accept(self);
         }
     }
+
+    fn visit_function(&mut self, node: &mut FunctionNode) {
+        // TODO
+    }
+
     fn visit_block(&mut self, node: &mut Block) {
         let scope_number = self.symboltable.new_scope_in_current_scope(true);
         node.set_scope_no(scope_number);
@@ -185,52 +189,51 @@ impl Visitor for SemanticVisitor {
         }
         self.symboltable.exit_scope()
     }
+
     fn visit_declaration(&mut self, node: &mut Declaration) {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(id_child) = node.get_id_child() {
-            if let Some(type_child) = node.get_type_child() {
-                let name = id_child.get_token().lexeme.clone();
-                let t = type_child.get_token().lexeme.clone();
-                if let Some(type_entry) = self.symboltable.lookup(&t) {
-                    let type_name = type_entry.name.clone();
-                    let value = type_entry.value.clone();
-                    if let Some(scope) = self.symboltable.current_scope() {
-                        let addr = self.get_register_id();
-                        let entry = if let Some(len_expr) = type_child.get_type_id_len_child() {
-                            let entry_type = NodeType::ArrayOf(type_name);
-                            Entry {
-                                name: name.clone(),
-                                category: ConstructCategory::ArrayVar,
-                                value: len_expr.get_result_addr(),
-                                scope_number: scope.scope_number,
-                                entry_type,
-                                address: addr.clone(),
-                            }
-                        } else {
-                            let entry_type = NodeType::Simple(type_name);
-                            Entry {
-                                name: name.clone(),
-                                category: ConstructCategory::SimpleVar,
-                                entry_type,
-                                value,
-                                scope_number: scope.scope_number,
-                                address: addr.clone(),
-                            }
-                        };
-                        if self.symboltable.in_current_scope(&name) {
-                            self.errors.push(String::from("Variable declared twice"));
-                        } else {
-                            self.symboltable.add_entry(entry);
-                            node.set_result_addr(addr);
-                        }
+        let id_child = node.get_id_child();
+        let type_child = node.get_type_child();
+        let name = id_child.get_token().lexeme.clone();
+        let t = type_child.get_token().lexeme.clone();
+        if let Some(type_entry) = self.symboltable.lookup(&t) {
+            let type_name = type_entry.name.clone();
+            let value = type_entry.value.clone();
+            if let Some(scope) = self.symboltable.current_scope() {
+                let addr = self.get_register_id();
+                let entry = if let Some(len_expr) = type_child.get_type_id_len_child() {
+                    let entry_type = NodeType::ArrayOf(type_name);
+                    Entry {
+                        name: name.clone(),
+                        category: ConstructCategory::ArrayVar,
+                        value: len_expr.get_result_addr(),
+                        scope_number: scope.scope_number,
+                        entry_type,
+                        address: addr.clone(),
                     }
                 } else {
-                    self.errors
-                        .push(String::from("Usage of an undeclared type"));
+                    let entry_type = NodeType::Simple(type_name);
+                    Entry {
+                        name: name.clone(),
+                        category: ConstructCategory::SimpleVar,
+                        entry_type,
+                        value,
+                        scope_number: scope.scope_number,
+                        address: addr.clone(),
+                    }
+                };
+                if self.symboltable.in_current_scope(&name) {
+                    self.errors.push(String::from("Variable declared twice"));
+                } else {
+                    self.symboltable.add_entry(entry);
+                    node.set_result_addr(addr);
                 }
             }
+        } else {
+            self.errors
+                .push(String::from("Usage of an undeclared type"));
         }
     }
 
@@ -238,45 +241,43 @@ impl Visitor for SemanticVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(lhs) = node.get_lhs_child() {
-            if let Some(_entry) = self.symboltable.lookup(&lhs.get_token().lexeme) {
-                if let Some(rhs) = node.get_rhs_child() {
-                    match lhs.get_type() {
-                        NodeType::Simple(lt) => match rhs.get_type() {
-                            NodeType::Simple(rt) => {
-                                if rt != lt {
-                                    self.errors.push(format!("Can't assign a {} to {}", rt, lt));
-                                }
-                            }
-                            NodeType::ArrayOf(rt) => self.errors.push(format!(
-                                "Can't assign an array of {} to simple type {}",
-                                rt, lt
-                            )),
-                            NodeType::Unit => self.errors.push(format!(
-                                "Can't assign a result of an statement to a type {}",
-                                lt
-                            )),
-                        },
-                        NodeType::ArrayOf(lt) => {
-                            match rhs.get_type() {
-                                NodeType::ArrayOf(rt) => {
-                                    if rt != lt {
-                                        self.errors
-                                            .push(format!("Can't assign a {} to {}.", rt, lt));
-                                    }
-                                } //OK
-                                _ => self.errors.push(String::from(
-                                    "Can't assign a normal value to array type",
-                                )),
-                            }
+        let lhs = node.get_lhs_child();
+        if let Some(_entry) = self.symboltable.lookup(&lhs.get_token().lexeme) {
+            let rhs = node.get_rhs_child();
+            match lhs.get_type() {
+                NodeType::Simple(lt) => match rhs.get_type() {
+                    NodeType::Simple(rt) => {
+                        if rt != lt {
+                            self.errors.push(format!("Can't assign a {} to {}", rt, lt));
                         }
-                        NodeType::Unit => (),
+                    }
+                    NodeType::ArrayOf(rt) => self.errors.push(format!(
+                        "Can't assign an array of {} to simple type {}",
+                        rt, lt
+                    )),
+                    NodeType::Unit => self.errors.push(format!(
+                        "Can't assign a result of an statement to a type {}",
+                        lt
+                    )),
+                },
+                NodeType::ArrayOf(lt) => {
+                    match rhs.get_type() {
+                        NodeType::ArrayOf(rt) => {
+                            if rt != lt {
+                                self.errors
+                                    .push(format!("Can't assign a {} to {}.", rt, lt));
+                            }
+                        } //OK
+                        _ => self
+                            .errors
+                            .push(String::from("Can't assign a normal value to array type")),
                     }
                 }
-            } else {
-                self.errors
-                    .push(String::from("Assignment to undeclared variable."));
+                NodeType::Unit => (),
             }
+        } else {
+            self.errors
+                .push(String::from("Assignment to undeclared variable."));
         }
     }
 
@@ -287,27 +288,25 @@ impl Visitor for SemanticVisitor {
         let result_addr = self.get_register_id();
         node.set_result_addr(result_addr);
         let shared_node = &node;
-        if let Some(lhs) = shared_node.get_lhs_child() {
-            if let Some(rhs) = shared_node.get_rhs_child() {
-                let tl = lhs.get_type();
-                let tr = rhs.get_type();
-                if tl != tr {
-                    self.errors.push(String::from(format!(
-                        "Incompatible operands {}, {}",
-                        tl, tr
-                    )));
-                } else {
-                    match tl.clone() {
-                        NodeType::Simple(s) => match s.as_str() {
-                            "integer" | "real" => self.numeric_expression(node, tl),
-                            "Boolean" => self.bool_expression(node),
-                            "string" => self.string_expression(node),
-                            _ => (),
-                        },
-                        NodeType::ArrayOf(_s) => (),
-                        NodeType::Unit => (),
-                    }
-                }
+        let lhs = shared_node.get_lhs_child();
+        let rhs = shared_node.get_rhs_child();
+        let tl = lhs.get_type();
+        let tr = rhs.get_type();
+        if tl != tr {
+            self.errors.push(String::from(format!(
+                "Incompatible operands {}, {}",
+                tl, tr
+            )));
+        } else {
+            match tl.clone() {
+                NodeType::Simple(s) => match s.as_str() {
+                    "integer" | "real" => self.numeric_expression(node, tl),
+                    "Boolean" => self.bool_expression(node),
+                    "string" => self.string_expression(node),
+                    _ => (),
+                },
+                NodeType::ArrayOf(_s) => (),
+                NodeType::Unit => (),
             }
         }
     }
@@ -317,7 +316,7 @@ impl Visitor for SemanticVisitor {
             child.accept(self)
         }
         let name = node.get_token().lexeme.clone();
-        if node.has_index() {
+        if let Some(_index) = node.get_index_child() {
             self.indexed_variable(node);
         } else {
             if let Some(entry) = self.symboltable.lookup(&name) {
@@ -353,20 +352,19 @@ impl Visitor for SemanticVisitor {
                 ConstructCategory::Function(param_type_list, output_type) => {
                     node.set_type(output_type.clone());
                     node.set_result_addr(addr);
-                    if let Some(args) = node.get_arguments() {
-                        let children = args.get_children();
-                        if children.len() != param_type_list.len() {
-                            self.errors
-                                .push(format!("Invalid length of an argument list"));
-                        } else {
-                            for i in 0..param_type_list.len() {
-                                let child_type = children[i].get_type();
-                                if param_type_list[i] != child_type {
-                                    self.errors.push(format!(
-                                        "Argument {} is not type {}",
-                                        i, param_type_list[i]
-                                    ));
-                                }
+                    let args = node.get_arguments();
+                    let children = args.get_children();
+                    if children.len() != param_type_list.len() {
+                        self.errors
+                            .push(format!("Invalid length of an argument list"));
+                    } else {
+                        for i in 0..param_type_list.len() {
+                            let child_type = children[i].get_type();
+                            if param_type_list[i] != child_type {
+                                self.errors.push(format!(
+                                    "Argument {} is not type {}",
+                                    i, param_type_list[i]
+                                ));
                             }
                         }
                     }
@@ -386,13 +384,12 @@ impl Visitor for SemanticVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(condition) = node.get_condition() {
-            let cond_type = condition.get_type();
-            if let NodeType::Simple(t) = cond_type {
-                if t.as_str() != "Boolean" {
-                    self.errors
-                        .push(String::from("Non Boolean expression in an if statement"));
-                }
+        let condition = node.get_condition();
+        let cond_type = condition.get_type();
+        if let NodeType::Simple(t) = cond_type {
+            if t.as_str() != "Boolean" {
+                self.errors
+                    .push(String::from("Non Boolean expression in an if statement"));
             }
         }
     }
@@ -401,29 +398,40 @@ impl Visitor for SemanticVisitor {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(condition) = node.get_condition() {
-            let cond_type = condition.get_type();
-            if let NodeType::Simple(t) = cond_type {
-                if t.as_str() != "Boolean" {
-                    self.errors
-                        .push(String::from("Non Boolean expression in a while condition"));
-                }
+        let condition = node.get_condition();
+        let cond_type = condition.get_type();
+        if let NodeType::Simple(t) = cond_type {
+            if t.as_str() != "Boolean" {
+                self.errors
+                    .push(String::from("Non Boolean expression in a while condition"));
             }
         }
     }
-    
+
     fn visit_assert(&mut self, node: &mut AssertNode) {
         for child in node.get_children() {
             child.accept(self);
         }
-        if let Some(condition) = node.get_condition() {
-            let cond_type = condition.get_type();
-            if let NodeType::Simple(t) = cond_type {
-                if t.as_str() != "Boolean" {
-                    self.errors
-                        .push(String::from("Non Boolean expression in an Assert statement"));
-                }
+        let condition = node.get_condition();
+        let cond_type = condition.get_type();
+        if let NodeType::Simple(t) = cond_type {
+            if t.as_str() != "Boolean" {
+                self.errors.push(String::from(
+                    "Non Boolean expression in an Assert statement",
+                ));
             }
+        }
+    }
+
+    fn visit_parameters(&mut self, node: &mut ParametersNode) {
+        for child in node.get_children() {
+            child.accept(self);
+        }
+    }
+
+    fn visit_parameter_item(&mut self, node: &mut ParametersItemNode) {
+        for child in node.get_children() {
+            child.accept(self);
         }
     }
 }

@@ -12,6 +12,26 @@ impl Visitor for PrintVisitor {
             child.accept(self);
         }
     }
+
+    fn visit_parameters(&mut self, node: &mut ParametersNode) {
+        print!("Parameters(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
+
+
+    fn visit_parameter_item(&mut self, node: &mut ParametersItemNode) {
+        print!("Parameter(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
+
     fn visit_program(&mut self, node: &mut Program) {
         print!("Program(");
         for child in node.get_children() {
@@ -20,6 +40,16 @@ impl Visitor for PrintVisitor {
         }
         print!(")");
     }
+
+    fn visit_function(&mut self, node: &mut FunctionNode) {
+        print!("Function(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
+
     fn visit_block(&mut self, node: &mut Block) {
         print!("Block(");
         for child in node.get_children() {
