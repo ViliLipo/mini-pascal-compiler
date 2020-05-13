@@ -231,6 +231,7 @@ impl Parser {
                         self.errors.push(msg);
                         return None;
                     } else if let Ok(mut id_node) = self.match_token(TokenKind::Identifier) {
+                        // TODO USE THIS ORDER IN VISITORS
                         id_node.add_child(expr_node);
                         Some(id_node)
                     } else {

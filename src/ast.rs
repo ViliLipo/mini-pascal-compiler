@@ -71,13 +71,23 @@ impl Clone for NodeType {
 pub trait Node {
     fn get_token(&self) -> Token;
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>>;
-    fn add_child(&mut self, child: Box<dyn Node>);
+    fn add_child(&mut self, child: Box<dyn Node>) {
+        self.get_children().push(child);
+    }
     fn accept(&mut self, visitor: &mut dyn Visitor);
     fn as_any(&self) -> &dyn Any;
-    fn get_type(&self) -> NodeType;
-    fn set_type(&mut self, node_type: NodeType);
-    fn get_result_addr(&self) -> String;
-    fn set_result_addr(&mut self, address: String);
+    fn get_type(&self) -> NodeType {
+        NodeType::Unit
+    }
+    fn set_type(&mut self, _node_type: NodeType) {
+        ()
+    }
+    fn get_result_addr(&self) -> String {
+        String::new()
+    }
+    fn set_result_addr(&mut self, _address: String) {
+        ()
+    }
 }
 
 pub struct Program {
@@ -107,26 +117,11 @@ impl Node for Program {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_program(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Simple(String::from("integer"))
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
     }
 }
 
@@ -160,26 +155,11 @@ impl Node for Declaration {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_declaration(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
     }
 }
 
@@ -206,26 +186,11 @@ impl Node for Block {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_block(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
     }
 }
 
@@ -258,26 +223,11 @@ impl Node for Assignment {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_assignment(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
     }
 }
 
@@ -304,9 +254,6 @@ impl Node for Expression {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_expression(self);
     }
@@ -319,7 +266,6 @@ impl Node for Expression {
     fn get_type(&self) -> NodeType {
         self.type_id.clone()
     }
-
     fn set_result_addr(&mut self, addr: String) {
         self.result_addr = addr;
     }
@@ -350,9 +296,6 @@ impl Node for Variable {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_variable(self);
@@ -390,35 +333,12 @@ impl Node for Identifier {
     fn get_token(&self) -> Token {
         self.token.clone()
     }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
-
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.push(child);
-    }
-
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         self.children.as_mut()
     }
-
-    fn get_result_addr(&self) -> String {
-        String::from("No address")
-    }
-
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_identifier(self);
     }
@@ -437,9 +357,6 @@ impl Node for Literal {
     }
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
-    }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_literal(self);
@@ -488,9 +405,6 @@ impl Node for Call {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_call(self);
     }
@@ -535,27 +449,11 @@ impl Node for IfNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_if(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -580,27 +478,11 @@ impl Node for WhileNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_while(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -616,26 +498,11 @@ impl Node for ParameterNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -651,26 +518,11 @@ impl Node for ArgumentNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_argument(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -685,7 +537,6 @@ impl AssertNode {
     }
 }
 
-
 impl Node for AssertNode {
     fn get_token(&self) -> Token {
         self.token.clone()
@@ -693,26 +544,11 @@ impl Node for AssertNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_assert(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -728,27 +564,11 @@ impl Node for ErrorNode {
     fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
         &mut self.children
     }
-    fn add_child(&mut self, child: Box<dyn Node>) {
-        self.children.insert(self.children.len(), child);
-    }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit(self);
     }
     fn as_any(&self) -> &dyn Any {
         self
-    }
-    fn set_type(&mut self, _type_id: NodeType) {
-        ()
-    }
-    fn get_type(&self) -> NodeType {
-        NodeType::Unit
-    }
-    fn set_result_addr(&mut self, _addr: String) {
-        ()
-    }
-
-    fn get_result_addr(&self) -> String {
-        String::new()
     }
 }
 
@@ -761,14 +581,8 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             children,
             scope_no: -1,
         }),
-        TokenKind::Var => Box::from(Declaration {
-            token,
-            children,
-        }),
-        TokenKind::Assign => Box::from(Assignment {
-            token,
-            children,
-        }),
+        TokenKind::Var => Box::from(Declaration { token, children }),
+        TokenKind::Assign => Box::from(Assignment { token, children }),
         TokenKind::Identifier => match flag {
             "var" => Box::from(Variable {
                 token,
@@ -782,10 +596,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
                 type_id: NodeType::Unit,
                 result_addr: String::new(),
             }),
-            _ => Box::from(Identifier {
-                token,
-                children,
-            }),
+            _ => Box::from(Identifier { token, children }),
         },
         TokenKind::RealLiteral | TokenKind::StringLiteral | TokenKind::IntegerLiteral => {
             Box::from(Literal {
@@ -813,32 +624,14 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
             type_id: NodeType::Unit,
             result_addr: String::new(),
         }),
-        TokenKind::If => Box::from(IfNode {
-            token,
-            children,
-        }),
-        TokenKind::While => Box::from(WhileNode {
-            token,
-            children,
-        }),
+        TokenKind::If => Box::from(IfNode { token, children }),
+        TokenKind::While => Box::from(WhileNode { token, children }),
         TokenKind::OpenBracket => match flag {
-            "params" => Box::from(ParameterNode {
-                token,
-                children,
-            }),
-            "args" => Box::from(ArgumentNode {
-                token,
-                children,
-            }),
-            _ => Box::from(ErrorNode {
-                token,
-                children,
-            }),
+            "params" => Box::from(ParameterNode { token, children }),
+            "args" => Box::from(ArgumentNode { token, children }),
+            _ => Box::from(ErrorNode { token, children }),
         },
-        TokenKind::Assert => Box::from(AssertNode {
-            token,
-            children,
-        }),
+        TokenKind::Assert => Box::from(AssertNode { token, children }),
         _ => Box::from(ErrorNode {
             token: token,
             children,

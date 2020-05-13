@@ -200,6 +200,7 @@ impl Visitor for SemanticVisitor {
                         let addr = self.get_register_id();
                         let entry = if let Some(len_expr) = type_child.get_type_id_len_child() {
                             let entry_type = NodeType::ArrayOf(type_name);
+                            println!("got size");
                             Entry {
                                 name: name.clone(),
                                 category: ConstructCategory::ArrayVar,

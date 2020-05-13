@@ -255,6 +255,7 @@ impl Visitor for CodeGenVisitor {
                     NodeType::ArrayOf(t) => {
                         if let Some(type_child) = node.get_type_child() {
                             if let Some(size_node) = type_child.get_type_id_len_child() {
+                                println!("got size");
                                 let type_id =
                                     CodeGenVisitor::type_conversion_from_node_type(node_t.clone());
                                 let size_addr = size_node.get_result_addr();
@@ -366,8 +367,10 @@ impl Visitor for CodeGenVisitor {
         }
     }
 
-    fn visit_identifier(&mut self, _node: &mut Identifier) {
-        ()
+    fn visit_identifier(&mut self, node: &mut Identifier) {
+        for child in node.get_children() {
+            child.accept(self)
+        }
     }
 
     fn visit_variable(&mut self, node: &mut Variable) {
