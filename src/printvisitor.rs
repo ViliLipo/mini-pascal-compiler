@@ -20,6 +20,14 @@ impl Visitor for PrintVisitor {
         }
         print!(")");
     }
+    fn visit_function(&mut self, node: &mut Function) {
+        print!("function(");
+        for child in node.get_children() {
+            println!("");
+            child.accept(self);
+        }
+        print!(")");
+    }
     fn visit_block(&mut self, node: &mut Block) {
         print!("Block(");
         for child in node.get_children() {

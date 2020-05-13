@@ -96,12 +96,12 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn get_id_child(&self) -> Option<&Variable> {
+    pub fn get_id_child(&self) -> Option<&Identifier> {
         self.get_child(0)
     }
-    fn get_child(&self, no: usize) -> Option<&Variable> {
+    fn get_child(&self, no: usize) -> Option<&Identifier> {
         match self.children.get(no) {
-            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
+            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Identifier>() {
                 Some(var) => Some(var),
                 None => None,
             },
@@ -124,6 +124,73 @@ impl Node for Program {
         self
     }
 }
+
+pub struct SubRoutineList {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl SubRoutineList {
+    pub fn new(token: Token) -> SubRoutineList {
+        SubRoutineList{
+            token,
+            children: Vec::new(),
+        }
+    }
+}
+
+impl Node for SubRoutineList {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+
+pub struct Function {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl Function {
+    pub fn get_id_child(&self) -> Option<&Variable> {
+        self.get_child(0)
+    }
+    fn get_child(&self, no: usize) -> Option<&Variable> {
+        match self.children.get(no) {
+            Some(boxed_child) => match boxed_child.as_any().downcast_ref::<Variable>() {
+                Some(var) => Some(var),
+                None => None,
+            },
+            None => None,
+        }
+    }
+}
+
+impl Node for Function {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        &mut self.children
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit_function(self);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+
 
 pub struct Declaration {
     token: Token,
@@ -328,7 +395,6 @@ impl Identifier {
         self.children.get(0)
     }
 }
-
 impl Node for Identifier {
     fn get_token(&self) -> Token {
         self.token.clone()
@@ -341,6 +407,44 @@ impl Node for Identifier {
     }
     fn accept(&mut self, visitor: &mut dyn Visitor) {
         visitor.visit_identifier(self);
+    }
+}
+
+pub struct ParameterItemNode {
+    token: Token,
+    children: Vec<Box<dyn Node>>,
+}
+
+impl Node for ParameterItemNode {
+    fn get_token(&self) -> Token {
+        self.token.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&mut self) -> &mut Vec<Box<dyn Node>> {
+        self.children.as_mut()
+    }
+    fn accept(&mut self, visitor: &mut dyn Visitor) {
+        visitor.visit(self);
+    }
+}
+
+
+// For some reason i decided to overload this node with the type information
+impl ParameterItemNode {
+    pub fn get_type_identifier(&self) -> Option<&Box<dyn Node>> {
+        self.children.get(1)
+    }
+    pub fn get_identifier(&self) -> Option<&Box<dyn Node>> {
+        self.children.get(0)
+    }
+
+    pub fn new(token: Token) -> ParameterItemNode {
+        ParameterItemNode{
+            token,
+            children: Vec::new(),
+        }
     }
 }
 
@@ -576,6 +680,7 @@ pub fn make_node(token: Token, flag: &str) -> Box<dyn Node> {
     let children = Vec::new();
     match token.token_kind {
         TokenKind::Program => Box::from(Program { token, children }),
+        TokenKind::Function => Box::from(Function { token, children }),
         TokenKind::Begin => Box::from(Block {
             token,
             children,

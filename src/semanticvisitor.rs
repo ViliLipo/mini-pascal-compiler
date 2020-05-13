@@ -177,6 +177,24 @@ impl Visitor for SemanticVisitor {
             child.accept(self);
         }
     }
+
+    fn visit_function(&mut self, node: &mut Function) {
+        if let Some(name_child) = node.get_id_child() {
+            let prog_id = name_child.get_token().lexeme.clone();
+            self.symboltable.add_entry(Entry {
+                name: prog_id,
+                category: ConstructCategory::Program,
+                entry_type: NodeType::Simple(String::from("integer")),
+                value: String::from("PROGRAM"),
+                scope_number: 0,
+                address: String::from(""),
+            });
+        }
+        for child in node.get_children() {
+            child.accept(self);
+        }
+    }
+
     fn visit_block(&mut self, node: &mut Block) {
         let scope_number = self.symboltable.new_scope_in_current_scope(true);
         node.set_scope_no(scope_number);

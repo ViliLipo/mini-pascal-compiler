@@ -1,6 +1,6 @@
-use crate::ast::get_args_node;
 use crate::ast::make_node;
 use crate::ast::Node;
+use crate::ast::*;
 use crate::scanner::Scanner;
 use crate::scanner::Token;
 use crate::scanner::TokenKind;
@@ -27,9 +27,11 @@ impl Parser {
             self.next_token();
             Ok(node)
         } else {
+            let line = self.current_token.row + 1;
+            let column = self.current_token.column + 1;
             Err(String::from(format!(
-                "Expected {} got {}",
-                tokenkind, self.current_token.token_kind
+                "Expected {} got {}, on line: {}, column: {},",
+                tokenkind, self.current_token.token_kind, line, column
             )))
         }
     }
@@ -52,6 +54,9 @@ impl Parser {
                         return None;
                     }
                 }
+                if let Some(subroutines) = self.functions_and_procedures() {
+                    main_node.add_child(subroutines);
+                }
                 match self.block() {
                     Some(block) => main_node.add_child(block),
                     None => {
@@ -71,8 +76,51 @@ impl Parser {
         }
     }
 
+    fn functions_and_procedures(&mut self) -> Option<Box<dyn Node>> {
+        let mut node = SubRoutineList::new(self.current_token.clone());
+        loop {
+            match self.current_token.token_kind {
+                TokenKind::Function => {
+                    if let Some(f) = self.function() {
+                        node.add_child(f)
+                    }
+                }
+                TokenKind::Procedure => {
+                    if let Some(p) = self.procedure() {
+                        node.add_child(p)
+                    }
+                }
+                _ => break,
+            }
+        }
+        Some(Box::from(node))
+    }
+
     fn parameters(&mut self) -> Option<Box<dyn Node>> {
-        None
+        let mut parameters_node = make_node(self.current_token.clone(), "params");
+        self.next_token();
+        loop {
+            if let Ok(identifier) = self.match_token(TokenKind::Identifier) {
+                match self.match_token(TokenKind::Colon) {
+                    Ok(_delim) => match self.type_construct() {
+                        Some(type_identifier) => {
+                            let mut item = ParameterItemNode::new(self.current_token.clone());
+                            item.add_child(identifier);
+                            item.add_child(type_identifier);
+                            parameters_node.add_child(Box::from(item));
+                            if let Err(_msg) = self.match_token(TokenKind::Comma) {
+                                break;
+                            }
+                        }
+                        _ => (),
+                    },
+                    Err(msg) => self.errors.push(msg),
+                };
+            } else {
+                break;
+            }
+        }
+        Some(parameters_node)
     }
 
     fn function(&mut self) -> Option<Box<dyn Node>> {
@@ -83,25 +131,36 @@ impl Parser {
                 let id_child = make_node(self.current_token.clone(), "");
                 main_node.add_child(id_child);
                 self.next_token();
-                if let Err(msg) = self.match_token(TokenKind::OpenBracket) {
+                if let Some(param_child) = self.parameters() {
+                    main_node.add_child(param_child);
+                }
+                if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
                     self.errors.push(msg);
                     None
                 } else {
-                    if let Some(param_child) = self.parameters() {
-                        main_node.add_child(param_child);
-                    }
-                    if let Err(msg) = self.match_token(TokenKind::CloseBracket) {
+                    if let Err(msg) = self.match_token(TokenKind::Colon) {
                         self.errors.push(msg);
                         None
                     } else {
-                        if let Err(msg) = self.match_token(TokenKind::Colon) {
-                            self.errors.push(msg);
-                            None
-                        } else {
-                            if let TokenKind::Identifier = self.current_token.token_kind {
-                                let type_child = make_node(self.current_token.clone(), "");
+                        if let Some(type_child) = self.type_construct() {
+                            main_node.add_child(type_child);
+                            if let Err(msg) = self.match_token(TokenKind::SemiColon) {
+                                self.errors.push(msg);
+                                None
+                            } else {
+                                println!("wow: {}", self.current_token.token_kind);
+                                if let Some(block) = self.block() {
+                                    main_node.add_child(block);
+                                    if let Err(msg) = self.match_token(TokenKind::SemiColon) {
+                                        self.errors.push(msg);
+                                    }
+                                    Some(main_node)
+                                } else {
+                                    None
+                                }
                             }
-                            Some(main_node)
+                        } else {
+                            None
                         }
                     }
                 }
@@ -150,12 +209,14 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Option<Box<dyn Node>> {
+        println!("lel: {}", self.current_token.token_kind);
         match self.current_token.token_kind {
             TokenKind::Var => self.declaration_stmnt(),
             TokenKind::Identifier => self.assign_or_call_stmnt(),
             TokenKind::If => self.if_stmnt(),
             TokenKind::While => self.while_stmnt(),
             TokenKind::Begin => self.block(),
+            TokenKind::Return => self.return_stmnt(),
             TokenKind::Assert => self.assert_stmnt(),
             _ => None,
         }
@@ -231,7 +292,6 @@ impl Parser {
                         self.errors.push(msg);
                         return None;
                     } else if let Ok(mut id_node) = self.match_token(TokenKind::Identifier) {
-                        // TODO USE THIS ORDER IN VISITORS
                         id_node.add_child(expr_node);
                         Some(id_node)
                     } else {
@@ -342,6 +402,19 @@ impl Parser {
         }
     }
 
+    fn return_stmnt(&mut self) -> Option<Box<dyn Node>> {
+        if let TokenKind::Return = self.current_token.token_kind {
+            let mut node = make_node(self.current_token.clone(), "");
+            self.next_token();
+            if let Some(expr_child) = self.expression() {
+                node.add_child(expr_child);
+            }
+            Some(node)
+        } else {
+            None
+        }
+    }
+
     fn expression(&mut self) -> Option<Box<dyn Node>> {
         match self.simple_expression() {
             Some(left_sub_expr) => match self.current_token.token_kind {
@@ -388,6 +461,7 @@ impl Parser {
             None => None,
         }
     }
+
 
     fn term(&mut self) -> Option<Box<dyn Node>> {
         match self.factor() {

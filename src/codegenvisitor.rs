@@ -224,6 +224,10 @@ impl Visitor for CodeGenVisitor {
         self.symboltable.exit_scope();
         self.buffer.push_str("return 0;\n}")
     }
+    fn visit_function(&mut self, node: &mut Function) {
+        ()
+    }
+
     fn visit_block(&mut self, node: &mut Block) {
         let scope_number = node.get_scope_no();
         self.symboltable.enter_scope_with_number(scope_number);

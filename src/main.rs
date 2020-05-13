@@ -19,25 +19,26 @@ fn main() -> std::io::Result<()>{
     let s = source::read_file(filename);
     let scanner = scanner::build_scanner(s);
     let mut parser = parser::build_parser(scanner);
-    let mut ast = parser.program();
-    let mut uast = ast.unwrap();
-    let mut pv = printvisitor::PrintVisitor{};
-    uast.accept(&mut pv);
-    let mut sv = semanticvisitor::SemanticVisitor::new();
-    uast.accept(&mut sv);
-    let symboltable = sv.get_symbol_table();
-    let mut cgv = codegenvisitor::CodeGenVisitor::new(symboltable);
-    uast.accept(&mut cgv);
+    let ast = parser.program();
     for e in parser.errors {
         println!("Parsing error: {}", e);
     }
-    for e in sv.errors {
-        println!("Semantic error: {}", e);
+    if let Some(mut uast) = ast {
+        let mut pv = printvisitor::PrintVisitor{};
+        uast.accept(&mut pv);
+        let mut sv = semanticvisitor::SemanticVisitor::new();
+        uast.accept(&mut sv);
+        let symboltable = sv.get_symbol_table();
+        let mut cgv = codegenvisitor::CodeGenVisitor::new(symboltable);
+        uast.accept(&mut cgv);
+        for e in sv.errors {
+            println!("Semantic error: {}", e);
+        }
+        print!("{}", cgv.get_output());
+        let resultname = filename.clone().replace(".minipascal", ".c");
+        let mut file = File::create(resultname.as_str())?;
+        file.write_all(cgv.get_output().as_bytes())?;
     }
-    print!("{}", cgv.get_output());
-    let resultname = filename.clone().replace(".minipascal", ".c");
-    let mut file = File::create(resultname.as_str())?;
-    file.write_all(cgv.get_output().as_bytes())?;
     Ok(())
 
 }

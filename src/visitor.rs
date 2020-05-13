@@ -15,4 +15,5 @@ pub trait Visitor {
     fn visit_while(&mut self, node: &mut WhileNode);
     fn visit_argument(&mut self, node: &mut ArgumentNode);
     fn visit_assert(&mut self, node: &mut AssertNode);
+    fn visit_function(&mut self, node: &mut Function);
 }
