@@ -1,19 +1,17 @@
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
-mod source;
-mod scanner;
-mod constants;
 mod ast;
-mod visitor;
+mod constants;
 mod parser;
 mod printvisitor;
-mod semanticvisitor;
+mod scanner;
+mod source;
 mod symboltable;
-mod codegenvisitor;
+mod typefolder;
+mod visitor;
 
-
-fn main() -> std::io::Result<()>{
+fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
     let s = source::read_file(filename);
@@ -23,22 +21,18 @@ fn main() -> std::io::Result<()>{
     for e in parser.errors {
         println!("Parsing error: {}", e);
     }
-    if let Some(mut uast) = ast {
-        let mut pv = printvisitor::PrintVisitor{};
-        uast.accept(&mut pv);
-        let mut sv = semanticvisitor::SemanticVisitor::new();
-        uast.accept(&mut sv);
-        let symboltable = sv.get_symbol_table();
-        let mut cgv = codegenvisitor::CodeGenVisitor::new(symboltable);
-        uast.accept(&mut cgv);
-        for e in sv.errors {
-            println!("Semantic error: {}", e);
+    let mut pv = printvisitor::PrintVisitor::new();
+    if let Some(isast) = ast {
+        pv.visit_ast(&isast);
+        let mut tf = typefolder::TypeFolder::new();
+        let mut table = symboltable::get_symbol_table();
+        if let Some(typedast) = tf.fold_ast(&isast, &mut table) {
+            print!("GOT TYPEDAST");
+        } else {
+            for e in tf.get_errors() {
+                println!("Semantic error: {}", e)
+            }
         }
-        print!("{}", cgv.get_output());
-        let resultname = filename.clone().replace(".minipascal", ".c");
-        let mut file = File::create(resultname.as_str())?;
-        file.write_all(cgv.get_output().as_bytes())?;
     }
     Ok(())
-
 }

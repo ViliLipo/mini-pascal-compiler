@@ -1,16 +1,14 @@
 program greatest_divisor;
 begin
-  var i: integer;
+  var i: array[5] of integer;
   var d: integer;
-  i := 3;
-  d := i + (5 * (1000/3));
-  if d < 1000 then 
-  writeln(i);
-  else
+  i[2] := 3;
+  d := (i[2] + 5) * (1000/3);
+  if d < 1000 then writeln(i) else
   begin
     var x: integer;
     x := 3 + 8;
-    i := i + x;
-    writeln(i);
+    i[2] := i[2] + x;
+    writeln(i)
   end
 end.
