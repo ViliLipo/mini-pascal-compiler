@@ -8,7 +8,7 @@ void mp_assert(int condition, char* message) {
   if (! condition) {
     printf("Assert failed:\n");
     printf("\t%s", message);
-    exit(0);
+    exit(1);
   }
 }
 
@@ -31,44 +31,52 @@ void free_str_array(char** str_array, int size) {
 int booltmp = 0;
 
 int main() {
-int r0;
-int r1 = 5;
-int *r2;
-int r3 = 5;
-int *r4;
-int r5 = 0;
-int r6 = 5;
+int r1;
+int r2;
+int *r3;
+int r4;
+int *r5;
+int r6;
 int r7;
-int r8 = 5;
+int r8;
 int r9;
-int r10 = 1;
+int r10;
 int r11;
-int r12 = 0;
-int r13 = 5;
+int r12;
+int r13;
 int r14;
-int r16 = 1;
+int r15;
+int r16;
 int r17;
-int r2_size = r1;
-r2 = (int*) malloc(r1 * sizeof(int*));
-int r4_size = r3;
-r4 = (int*) malloc(r3 * sizeof(int*));
-r0 = r5;
+r2 = 5;
+int r3_size = r2;
+r3 = (int*) malloc(r2 * sizeof(int));
+r4 = 5;
+int r5_size = r4;
+r5 = (int*) malloc(r4 * sizeof(int));
+r6 = 0;
+r1 = r6;
 label0:
-r7 = r0 < r6;
-if (r7 != 1 ) { goto label1; }
-r9 = r8 - r0;
-r2[r0] = r9;
-r11 = r0 + r10;
-r0 = r11;
+r7 = 5;
+r8 = r1 < r7;
+if (r8 != 1 ) { goto label1; }
+r9 = 5;
+r10 = r9 - r1;
+r3[r1] = r10;
+r11 = 1;
+r12 = r1 + r11;
+r1 = r12;
 goto label0;label1:
-r0 = r12;
-memcpy(r4, r2, r3 * sizeof(int));
+r13 = 0;
+r1 = r13;
+memcpy(r5, r3, r5_size * sizeof(int));
 label2:
-r14 = r0 < r13;
-if (r14 != 1 ) { goto label3; }
-printf("%d\n", r4[r0]);
-r17 = r0 + r16;
-r0 = r17;
+r14 = 5;
+r15 = r1 < r14;
+if (r15 != 1 ) { goto label3; }
+printf("%d ", r5[r1]);printf("\n");
+r16 = 1;
+r17 = r1 + r16;
+r1 = r17;
 goto label2;label3:
-return 0;
-}
+return 0;}

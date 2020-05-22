@@ -8,7 +8,7 @@ void mp_assert(int condition, char* message) {
   if (! condition) {
     printf("Assert failed:\n");
     printf("\t%s", message);
-    exit(0);
+    exit(1);
   }
 }
 

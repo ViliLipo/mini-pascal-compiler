@@ -1,0 +1,7 @@
+program booleanstest;
+begin
+writeln(true);
+var true : Boolean;
+true := not true;
+writeln(true);
+end.

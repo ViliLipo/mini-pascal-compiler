@@ -1,0 +1,7 @@
+program readtest;
+begin
+var i: array[10] of integer;
+writeln("Anna numero");
+read(i[0], i[1]);
+writeln("Numero on: ", i[0], i[1]);
+end.

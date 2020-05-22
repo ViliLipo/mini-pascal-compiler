@@ -8,7 +8,7 @@ void mp_assert(int condition, char* message) {
   if (! condition) {
     printf("Assert failed:\n");
     printf("\t%s", message);
-    exit(0);
+    exit(1);
   }
 }
 
@@ -31,13 +31,11 @@ void free_str_array(char** str_array, int size) {
 int booltmp = 0;
 
 int main() {
-double r1;
-double r2;
-double r3;
-double r4;
-r2 = 3.14;
-r3 = 2.0;
-r4 = r2 / r3;
-r1 = r4;
-printf("%f\n", r1);
+int r0 = 0;
+int r1 = 1;
+int r3;
+printf("%d ", r1);printf("\n");
+r3 = !r1;
+r1 = r3;
+printf("%d ", r1);printf("\n");
 return 0;}

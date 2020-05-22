@@ -1,28 +1,43 @@
 use crate::ast::*;
-use crate::semanticvisitor::string_as_opkind;
-use crate::semanticvisitor::OpKind;
-use crate::symboltable::Symboltable;
-use crate::visitor::Visitor;
+use crate::scanner::Token;
+use crate::typefolder::string_as_opkind;
+use crate::typefolder::OpKind;
+use crate::visitor::TypedVisitor;
 use std::fs::File;
 use std::io::prelude::*;
 
 pub struct CodeGenVisitor {
-    symboltable: Symboltable,
     buffer: String,
     declaration_buffer: String,
+    ready_buffer: String,
     free_buffer: String,
     label_no: u32,
 }
 
 impl CodeGenVisitor {
-    pub fn new(symboltable: Symboltable) -> CodeGenVisitor {
+    pub fn new() -> CodeGenVisitor {
         return CodeGenVisitor {
-            symboltable,
             buffer: String::new(),
             declaration_buffer: String::new(),
+            ready_buffer: String::new(),
             free_buffer: String::new(),
             label_no: 0,
         };
+    }
+
+    fn add_declaration(&mut self, decl: String) {
+        self.declaration_buffer.push_str(decl.as_str());
+    }
+
+    fn add_code(&mut self, code: String) {
+        self.buffer.push_str(code.as_str());
+    }
+
+    fn declare(&mut self, address: &Address, var_type: &NodeType) {
+        let lhs_text =
+            CodeGenVisitor::get_lhs_text_for_item(var_type.clone(), address);
+        let text = format!("{};\n", lhs_text);
+        self.add_declaration(text);
     }
 
     fn get_new_label(&mut self) -> String {
@@ -31,52 +46,55 @@ impl CodeGenVisitor {
         text
     }
 
-    fn type_conversion(source_type: String) -> String {
-        match source_type.as_str() {
-            "integer" | "Boolean" => String::from("int"),
-            "real" => String::from("double"),
-            "string" => String::from("char *"),
-            _ => String::new(),
+    fn type_conversion(source_type: &SimpleType) -> String {
+        match source_type {
+            SimpleType::Integer | SimpleType::Boolean => String::from("int"),
+            SimpleType::Real => String::from("double"),
+            SimpleType::String => String::from("char *"),
         }
     }
 
-    fn type_conversion_from_node_type(source_type: NodeType) -> String {
+    fn type_conversion_from_node_type(source_type: &NodeType) -> String {
         match source_type {
             NodeType::Simple(t) => CodeGenVisitor::type_conversion(t),
-            NodeType::ArrayOf(t) => format!("{}*", CodeGenVisitor::type_conversion(t)),
-            NodeType::Unit => String::from("UNIT TYPE ERROR"),
+            NodeType::ArrayOf(t) => {
+                format!("{}*", CodeGenVisitor::type_conversion(t))
+            }
         }
     }
 
     fn printf_format_conversion(source_type: NodeType) -> String {
         match source_type {
-            NodeType::Simple(t) => match t.as_str() {
-                "integer" | "Boolean" => String::from("%d"),
-                "real" => String::from("%f"),
-                "string" => String::from("%s"),
-                _ => String::new(),
+            NodeType::Simple(t) => match t {
+                SimpleType::Integer | SimpleType::Boolean => String::from("%d"),
+                SimpleType::Real => String::from("%f"),
+                SimpleType::String => String::from("%s"),
             },
-            _ => String::from("Error"),
+            _ => String::from("Error array printing not implemented"),
         }
     }
 
     pub fn get_output(&self) -> String {
         // TODO: Fix memory management
-        self.declaration_buffer.clone() + self.buffer.as_str()
+        self.ready_buffer.clone()
     }
 
-    fn get_lhs_text_for_item(source_type: NodeType, item_id: String) -> String {
+    fn get_lhs_text_for_item(
+        source_type: NodeType,
+        item_id: &Address,
+    ) -> String {
         match source_type {
             NodeType::Simple(t) => {
-                if t == "string" {
+                if t == SimpleType::String {
                     format!("char *{}", item_id)
                 } else {
-                    let t = CodeGenVisitor::type_conversion(t);
-                    format!("{} {}", t, item_id.clone())
+                    let t = CodeGenVisitor::type_conversion(&t);
+                    format!("{} {}", t, item_id)
                 }
             }
-            NodeType::ArrayOf(t) => format!("{} *{}", CodeGenVisitor::type_conversion(t), item_id),
-            _ => format!(""),
+            NodeType::ArrayOf(t) => {
+                format!("{} *{}", CodeGenVisitor::type_conversion(&t), item_id)
+            }
         }
     }
 
@@ -87,26 +105,37 @@ impl CodeGenVisitor {
             _ => operator,
         }
     }
-    fn numeric_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
-        let old_op = node.get_token().lexeme.clone();
-        let op = CodeGenVisitor::relational_operation_converter(old_op);
+
+    fn numeric_expression(
+        &mut self,
+        lhs_addr: &Address,
+        rhs_addr: &Address,
+        result_addr: &Address,
+        op: &Token,
+    ) {
+        let target_op =
+            CodeGenVisitor::relational_operation_converter(op.lexeme.clone());
         let text = format!(
             "{} = {} {} {};\n",
-            node.get_result_addr(),
-            lhs_addr,
-            op,
-            rhs_addr,
+            result_addr, lhs_addr, target_op, rhs_addr,
         );
         self.buffer.push_str(text.as_str());
     }
 
-    fn string_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
-        let op = node.get_token().lexeme;
-        let opkind = string_as_opkind(&op);
-        let result_addr = node.get_result_addr();
+    fn string_expression(
+        &mut self,
+        lhs_addr: &Address,
+        rhs_addr: &Address,
+        result_addr: &Address,
+        op: &Token,
+    ) {
+        let opkind = string_as_opkind(&op.lexeme);
         let text = match opkind {
             OpKind::Addition => {
-                let alloc_text = format!("{} = (char *) malloc(256);\n", result_addr.clone());
+                let alloc_text = format!(
+                    "{} = (char *) malloc(256);\n",
+                    result_addr.clone()
+                );
                 let text = alloc_text
                     + format!(
                         "strcpy({},{});\nstrcat({},{});\n",
@@ -118,7 +147,7 @@ impl CodeGenVisitor {
                     .as_str();
                 Some(text)
             }
-            OpKind::Relational => match op.as_str() {
+            OpKind::Relational => match op.lexeme.as_str() {
                 "=" => {
                     let text = format!(
                         "booltmp = strcmp({}, {});\n{} = booltmp == 0;\n",
@@ -166,7 +195,7 @@ impl CodeGenVisitor {
             _ => None,
         };
         if let Some(t) = text {
-            self.buffer.push_str(t.as_str());
+            self.add_code(t);
         }
     }
 
@@ -179,24 +208,32 @@ impl CodeGenVisitor {
         String::from(t_str)
     }
 
-    // TODO <> not working
-    fn boolean_expression(&mut self, node: &mut Expression, lhs_addr: String, rhs_addr: String) {
-        let src_op = node.get_token().lexeme;
+    fn boolean_expression(
+        &mut self,
+        lhs_addr: &Address,
+        rhs_addr: &Address,
+        result_addr: &Address,
+        op: &Token,
+    ) {
+        let src_op = op.lexeme.clone();
         let opkind = string_as_opkind(&src_op);
-        let result_addr = node.get_result_addr();
         let target_op = match opkind {
-            OpKind::BoolArithmetic => CodeGenVisitor::boolean_operator_converter(src_op),
-            OpKind::Relational => CodeGenVisitor::relational_operation_converter(src_op),
+            OpKind::BoolArithmetic => {
+                CodeGenVisitor::boolean_operator_converter(src_op)
+            }
+            OpKind::Relational => {
+                CodeGenVisitor::relational_operation_converter(src_op)
+            }
             _ => String::from(""),
         };
         let text = format!(
             "{} = {} {} {};\n",
             result_addr, lhs_addr, target_op, rhs_addr,
         );
-        self.declaration_buffer.push_str(text.as_str());
+        self.add_code(text);
     }
 
-    fn insert_runtime(&mut self, runtime_file: String) {
+    fn insert_runtime(&mut self, runtime_file: &str) {
         if let Ok(mut file) = File::open(runtime_file.clone()) {
             let mut contents = String::new();
             if let Ok(_r) = file.read_to_string(&mut contents) {
@@ -206,316 +243,457 @@ impl CodeGenVisitor {
             println!("Can't open runtime file {}", runtime_file);
         }
     }
+    fn visit_literal(
+        &mut self,
+        token: &Token,
+        address: &Address,
+        node_type: &NodeType,
+    ) {
+        self.declare(address, node_type);
+        if node_type == &NodeType::Simple(SimpleType::String) {
+            self.visit_string_literal(&token.lexeme, address);
+        } else {
+            let text = format!("{} = {};\n", address, token.lexeme,);
+            self.add_code(text);
+        }
+    }
+
+    fn visit_string_literal(&mut self, literal: &String, address: &Address) {
+        let length = &literal.len(); // add one for terminating char
+        let line1 = format!(
+            "{} = (char*) malloc({} * sizeof(char));\n",
+            address, length,
+        );
+        let line2 = format!("strcpy({}, {});\n", address, literal);
+        let line3 = format!("int {}_size = {};\n", address, length);
+        self.add_code(line1);
+        self.add_code(line2);
+        self.add_code(line3);
+    }
+
+    fn visit_size(&mut self, array_address: &Address, address: &Address) {
+        let text = format!("{} = {}_size;\n", address, array_address);
+        self.add_code(text);
+    }
+
+    fn visit_variable(&mut self, var: &TypedVariable) {
+        match &var.substructure {
+            TypedVariableStructure::Simple => (),
+            TypedVariableStructure::Indexed(expr) => {
+                self.visit_expression(expr)
+            }
+        }
+    }
+    fn visit_binary_expression(
+        &mut self,
+        lhs: &TypedExpression,
+        rhs: &TypedExpression,
+        op: &Token,
+        result_addr: &Address,
+        out_type: &NodeType,
+    ) {
+        self.visit_expression(lhs);
+        self.visit_expression(rhs);
+        self.declare(&result_addr, out_type);
+        match out_type {
+            NodeType::ArrayOf(_t) => (), // Arrays not supported on Binary expression
+            NodeType::Simple(t) => match t {
+                SimpleType::Boolean => self.boolean_expression(
+                    &lhs.address,
+                    &rhs.address,
+                    result_addr,
+                    op,
+                ),
+                SimpleType::Integer | SimpleType::Real => self
+                    .numeric_expression(
+                        &lhs.address,
+                        &rhs.address,
+                        result_addr,
+                        op,
+                    ),
+                SimpleType::String => self.string_expression(
+                    &lhs.address,
+                    &rhs.address,
+                    result_addr,
+                    op,
+                ),
+            },
+        }
+    }
+
+    fn visit_call_expression(
+        &mut self,
+        address: &Address,
+        arguments: &Vec<TypedExpression>,
+        out_address: &Address,
+    ) {
+        for arg in arguments {
+            self.visit_expression(arg);
+        }
+        let args_text = self.args_call_format(arguments);
+        let text = format!("{} = {}{};\n", out_address, address, args_text);
+        self.add_code(text);
+    }
+
+    fn assign_simple(
+        &mut self,
+        variable: &TypedVariable,
+        value: &TypedExpression,
+    ) {
+        match &variable.substructure {
+            TypedVariableStructure::Indexed(index_expr) => {
+                self.visit_expression(index_expr);
+            }
+            _ => (),
+        };
+        let text = format!("{} = {};\n", &variable.address, &value.address);
+        self.add_code(text);
+    }
+
+    fn assign_array(
+        &mut self,
+        variable: &TypedVariable,
+        value: &TypedExpression,
+        st: SimpleType,
+    ) {
+        let type_text = CodeGenVisitor::type_conversion(&st);
+        let text = format!(
+            "memcpy({}, {}, {}_size * sizeof({}));\n",
+            variable.address, value.address, variable.address, type_text
+        );
+        self.add_code(text);
+    }
+
+    fn visit_write(&mut self, arguments: &Vec<TypedExpression>) {
+        for arg in arguments {
+            self.visit_expression(arg);
+            let format_text =
+                CodeGenVisitor::printf_format_conversion(arg.node_type.clone());
+            let text =
+                format!("printf(\"{} \", {});", format_text, arg.address);
+            self.add_code(text);
+        }
+        let text = String::from("printf(\"\\n\");\n");
+        self.add_code(text);
+    }
+
+    fn args_call_format(&mut self, arguments: &Vec<TypedExpression>) -> String {
+        let mut text = String::from("(");
+        for i in 0..arguments.len() {
+            if let Some(arg) = arguments.get(i) {
+                text = format!("{} {}", text, arg.address);
+            }
+            if i < arguments.len() - 1 {
+                text = format!("{},", text);
+            }
+        }
+        format!("{})", text)
+    }
+
+    fn visit_read(&mut self, variables: &Vec<Box<TypedVariable>>) {
+        for var in variables {
+            self.visit_variable(var);
+        }
+        let formats = self.read_scanf_formats(variables);
+        let adressess = self.read_address_formats(variables);
+        let text = format!("scanf({}, {});\n", formats, adressess);
+        self.add_code(text);
+    }
+
+    fn read_scanf_formats(
+        &mut self,
+        variables: &Vec<Box<TypedVariable>>,
+    ) -> String {
+        let mut text = format!("\"");
+        for var in variables {
+            let format_text =
+                CodeGenVisitor::printf_format_conversion(var.node_type.clone());
+            text = format!("{} {}", text, format_text);
+        }
+        format!("{}\"", text)
+    }
+
+    fn read_address_formats(
+        &mut self,
+        variables: &Vec<Box<TypedVariable>>,
+    ) -> String {
+        let mut text = String::new();
+        for i in 0..variables.len() {
+            if let Some(arg) = variables.get(i) {
+                text = format!("{} &{}", text, arg.address);
+            }
+            if i < variables.len() - 1 {
+                text = format!("{},", text);
+            }
+        }
+        text
+    }
+
+    fn visit_unary(
+        &mut self,
+        main_node: &TypedExpression,
+        rhs: &TypedExpression,
+    ) {
+        self.visit_expression(rhs);
+        self.declare(&main_node.address, &main_node.node_type);
+        let text = format!("{} = !{};\n", main_node.address, rhs.address);
+        self.add_code(text);
+    }
+
+    fn visit_procedure(
+        &mut self,
+        address: &Address,
+        parameters: &Vec<(TypedVariable, TypedTypeDescription)>,
+        block: &Vec<TypedStatement>,
+    ) {
+        let param_string = self.build_param_string(parameters);
+        let definition = format!("void {}{} {{\n", address, param_string);
+        self.declaration_buffer.push_str(definition.as_str());
+        self.visit_block(block);
+        self.add_code(format!("return;\n}}\n"));
+        self.ready_buffer.push_str(self.declaration_buffer.as_str());
+        self.ready_buffer.push_str(self.buffer.as_str());
+        self.declaration_buffer = String::new();
+        self.buffer = String::new();
+    }
+
+    fn build_param_string(&mut self, parameters: &Vec<(TypedVariable, TypedTypeDescription)>) -> String {
+        let mut text = String::from("(");
+        for i in 0..parameters.len() {
+            if let Some(param) = parameters.get(i){
+                let (variable, _type_def) = param;
+                let type_text = CodeGenVisitor::type_conversion_from_node_type(&variable.node_type);
+                text = format!("{}{} {}", text, type_text, variable.address);
+            }
+            if i < parameters.len() -1 {
+                text = format!("{},", text);
+            }
+        }
+        return format!("{})", text);
+    }
 }
 
-impl Visitor for CodeGenVisitor {
-    fn visit(&mut self, node: &mut dyn Node) {
-        for child in node.get_children() {
-            child.accept(self);
+impl TypedVisitor for CodeGenVisitor {
+    fn visit_ast(&mut self, node: &TypedAST) {
+        let TypedAST::Program(_token, subroutines, main_block) = node;
+        self.insert_runtime("src/runtime.c");
+        for sub in subroutines {
+            self.visit_subroutine(sub);
         }
-    }
-    fn visit_program(&mut self, node: &mut Program) {
-        self.insert_runtime(String::from("src/runtime.c"));
         self.declaration_buffer.push_str("int main() {\n");
-        self.symboltable.enter_scope_with_number(1);
-        for child in node.get_children() {
-            child.accept(self);
-        }
-        self.symboltable.exit_scope();
-        self.buffer.push_str("return 0;\n}")
+        self.declaration_buffer
+            .push_str("int r0 = 0;\nint r1 = 1;\n");
+        self.visit_block(main_block);
+        self.buffer.push_str("return 0;}\n");
+        self.ready_buffer.push_str(self.declaration_buffer.as_str());
+        self.ready_buffer.push_str(self.buffer.as_str());
+        self.declaration_buffer = String::new();
+        self.buffer = String::new();
     }
-    fn visit_function(&mut self, node: &mut Function) {
-        ()
-    }
-
-    fn visit_block(&mut self, node: &mut Block) {
-        let scope_number = node.get_scope_no();
-        self.symboltable.enter_scope_with_number(scope_number);
-        for child in node.get_children() {
-            child.accept(self);
-        }
-        self.symboltable.exit_scope()
-    }
-
-    fn visit_declaration(&mut self, node: &mut Declaration) {
-        for child in node.get_children() {
-            child.accept(self);
-        }
-        if let Some(id_child) = node.get_id_child() {
-            if let Some(entry) = self.symboltable.lookup(&id_child.get_token().lexeme) {
-                let node_t = entry.entry_type.clone();
-                let target_id = entry.address.clone();
-                let lhs_text =
-                    CodeGenVisitor::get_lhs_text_for_item(node_t.clone(), target_id.clone());
-                let text = format!("{};\n", lhs_text);
-                self.declaration_buffer.push_str(text.as_str());
-                match node_t.clone() {
-                    NodeType::Simple(t) => {
-                        if t.as_str() == "string" {
-                            let alloc_text = format!("{} = (char *) malloc(256);\n", target_id);
-                            self.declaration_buffer.push_str(alloc_text.as_str());
-                        }
-                    }
-                    NodeType::ArrayOf(t) => {
-                        if let Some(type_child) = node.get_type_child() {
-                            if let Some(size_node) = type_child.get_type_id_len_child() {
-                                println!("got size");
-                                let type_id =
-                                    CodeGenVisitor::type_conversion_from_node_type(node_t.clone());
-                                let size_addr = size_node.get_result_addr();
-                                let size_text =
-                                    format!("int {}_size = {};\n", target_id, size_addr);
-                                let alloc_text = format!(
-                                    "{} = ({}) malloc({} * sizeof({}));\n",
-                                    target_id, type_id, size_addr, type_id
-                                );
-                                self.buffer.push_str(size_text.as_str());
-                                self.buffer.push_str(alloc_text.as_str());
-                                if t.as_str() == "string" {
-                                    let str_alloc_text =
-                                        format!("alloc_str_array({}, {});\n", target_id, size_addr);
-                                    let str_free_text =
-                                        format!("free_str_array({}, {});\n", target_id, size_addr);
-                                    self.buffer.push_str(str_alloc_text.as_str());
-                                    self.free_buffer.push_str(str_free_text.as_str());
-                                }
-                                let free_text = format!("free({});\n", target_id);
-                                self.free_buffer.push_str(free_text.as_str());
-                            }
-                        }
-                    }
-                    NodeType::Unit => (),
-                }
+    fn visit_subroutine(&mut self, node: &TypedSubroutine) {
+        match node {
+            TypedSubroutine::Function(_t, _p, _b) => (),
+            TypedSubroutine::Procedure(address, parameters, block) => {
+                self.visit_procedure(address, parameters, block)
             }
         }
     }
-
-    fn visit_assignment(&mut self, node: &mut Assignment) {
-        for child in node.get_children() {
-            child.accept(self);
+    fn visit_block(&mut self, node: &Vec<TypedStatement>) {
+        for statement in node {
+            self.visit_statement(statement);
         }
-        // TODO: Left hand side Arrays
-        if let Some(id_child) = node.get_lhs_child() {
-            let target_addr = id_child.get_result_addr();
-            if let Some(val_child) = node.get_rhs_child() {
-                let value_addr = val_child.get_result_addr();
-                match id_child.get_type() {
-                    NodeType::Simple(_tl) => match val_child.get_type() {
-                        NodeType::Simple(tr) => {
-                            if tr.as_str() == "string" {
-                                let text = format!("strcpy({}, {});\n", target_addr, value_addr);
-                                self.buffer.push_str(text.as_str());
-                            } else {
-                                let text = format!("{} = {};\n", target_addr, value_addr);
-                                self.buffer.push_str(text.as_str());
-                            }
-                        }
-                        _ => (),
-                    },
-                    NodeType::ArrayOf(_tl) => match val_child.get_type() {
-                        NodeType::ArrayOf(tr) => {
-                            if let Some(entry) =
-                                self.symboltable.lookup(&id_child.get_token().lexeme)
-                            {
-                                let s_type_id = CodeGenVisitor::type_conversion(tr);
-                                let len_addr = entry.value.clone();
-                                let text = format!(
-                                    "memcpy({}, {}, {} * sizeof({}));\n",
-                                    target_addr.clone(),
-                                    value_addr,
-                                    len_addr,
-                                    s_type_id,
-                                );
-                                self.buffer.push_str(text.as_str());
-                            }
-                        }
-                        _ => (),
-                    },
-                    NodeType::Unit => (),
-                }
+    }
+    fn visit_statement(&mut self, node: &TypedStatement) {
+        match node {
+            TypedStatement::Assert(t, expr) => self.visit_assert(t, expr),
+            TypedStatement::Assign(var, expr) => self.visit_assign(var, expr),
+            TypedStatement::Block(block) => self.visit_block(block),
+            TypedStatement::Call(address, args) => self.visit_call(address, args),
+            TypedStatement::Declaration(variable, description) => {
+                self.visit_declaration(variable, description)
             }
-        }
-    }
-
-    fn visit_expression(&mut self, node: &mut Expression) {
-        for child in node.get_children() {
-            child.accept(self);
-        }
-        if let Some(lhs_child) = node.get_lhs_child() {
-            if let Some(rhs_child) = node.get_rhs_child() {
-                let lhs_addr = lhs_child.get_result_addr();
-                let rhs_addr = rhs_child.get_result_addr();
-                let result_addr = node.get_result_addr();
-                let lhs_type = lhs_child.get_type();
-                let type_id = node.get_type();
-                let lhs_text = CodeGenVisitor::get_lhs_text_for_item(type_id, result_addr.clone());
-                let decl_text = format!("{};\n", lhs_text);
-                self.declaration_buffer.push_str(decl_text.as_str());
-                match lhs_type {
-                    NodeType::Simple(t) => match t.as_str() {
-                        "integer" | "real" => {
-                            self.numeric_expression(node, lhs_addr, rhs_addr);
-                        }
-                        "Boolean" => {
-                            self.boolean_expression(node, lhs_addr, rhs_addr);
-                        }
-                        "string" => {
-                            self.string_expression(node, lhs_addr, rhs_addr);
-                        }
-                        _ => (),
-                    },
-                    NodeType::ArrayOf(_t) => (),
-                    NodeType::Unit => (),
-                }
+            TypedStatement::If(condition, body, else_body) => {
+                self.visit_if(condition, body, else_body)
             }
+            TypedStatement::Read(targets) => self.visit_read(targets),
+            TypedStatement::Return(token, value) => {
+                self.visit_return(token, value)
+            }
+            TypedStatement::While(condition, body) => {
+                self.visit_while(condition, body)
+            }
+            TypedStatement::Write(args) => self.visit_write(args),
         }
     }
 
-    fn visit_identifier(&mut self, node: &mut Identifier) {
-        for child in node.get_children() {
-            child.accept(self)
+    fn visit_assign(
+        &mut self,
+        variable: &TypedVariable,
+        value: &TypedExpression,
+    ) {
+        self.visit_expression(value);
+        match &variable.node_type {
+            NodeType::ArrayOf(st) => {
+                self.assign_array(variable, value, st.clone())
+            }
+            NodeType::Simple(_st) => self.assign_simple(variable, value),
         }
     }
 
-    fn visit_variable(&mut self, node: &mut Variable) {
-        for child in node.get_children() {
-            child.accept(self)
-        }
-    }
-
-    fn visit_literal(&mut self, node: &mut Literal) {
-        let lit_type = node.get_type();
-        if let NodeType::Simple(t) = lit_type.clone() {
-            let lit_value = node.get_token().lexeme;
-            let addr = node.get_result_addr();
-            let lhs_text = CodeGenVisitor::get_lhs_text_for_item(lit_type, addr.clone());
-            if t != "string" {
-                let text = format!("{} = {};\n", lhs_text, lit_value);
-                self.declaration_buffer.push_str(text.as_str());
-            } else {
-                let text0 = format!("{};\n", lhs_text);
-                let text1 = format!(
-                    "{} = malloc({});\n",
-                    addr,
-                    lit_value.clone().chars().count()
+    fn visit_declaration(
+        &mut self,
+        identifier: &TypedVariable,
+        type_description: &TypedTypeDescription,
+    ) {
+        match type_description {
+            TypedTypeDescription::Simple(_token) => {
+                self.declare(
+                    &identifier.address.clone(),
+                    &identifier.node_type,
                 );
-                let text2 = format!("strcpy({}, {});\n", addr, lit_value);
-                self.declaration_buffer.push_str(text0.as_str());
-                self.declaration_buffer.push_str(text1.as_str());
-                self.declaration_buffer.push_str(text2.as_str());
+                println!("declaration of a simple var");
             }
-        }
-    }
-
-    // TODO: Add other things than writeln
-    fn visit_call(&mut self, node: &mut Call) {
-        for child in node.get_children() {
-            child.accept(self);
-        }
-        match node.get_type() {
-            NodeType::Unit => (),
-            NodeType::Simple(_type_id) => {
-                let lhs_text =
-                    CodeGenVisitor::get_lhs_text_for_item(node.get_type(), node.get_result_addr());
-                let text = format!("{};\n", lhs_text);
-                self.declaration_buffer.push_str(text.as_str());
-            }
-            NodeType::ArrayOf(_type_id) => (), // TODO: arrays as return values
-        };
-        match node.get_token().lexeme.as_str() {
-            "writeln" => {
-                if let Some(args) = node.get_arguments() {
-                    for argument in args.get_children() {
-                        let addr = argument.get_result_addr().clone();
-                        let format_param =
-                            CodeGenVisitor::printf_format_conversion(argument.get_type());
-                        let text = format!("printf(\"{}\\n\", {});\n", format_param, addr);
-                        self.buffer.push_str(text.as_str());
-                    }
-                }
-            }
-            "read" => (),
-            "size" => {
-                let result_addr = node.get_result_addr();
-                if let Some(args) = node.get_arguments() {
-                    println!("GOT ARGS");
-                    if let Some(array) = args.get_children().get(0) {
-                        println!("Args got children");
-                        if let Some(entry) =
-                            self.symboltable.lookup(&array.get_token().lexeme.clone())
-                        {
-                            let array_addr = entry.address.clone();
-                            let text = format!("{} = {}_size;\n", result_addr, array_addr);
-                            self.buffer.push_str(text.as_str());
+            TypedTypeDescription::Array(_token, size_expr) => {
+                self.visit_expression(size_expr);
+                println!("wuut");
+                match &identifier.node_type {
+                    NodeType::ArrayOf(t) => match t {
+                        SimpleType::String => (), // special case;,
+                        SimpleType::Integer
+                        | SimpleType::Real
+                        | SimpleType::Boolean => {
+                            println!("generating array declaration");
+                            self.declare(
+                                &identifier.address.clone(),
+                                &identifier.node_type,
+                            );
+                            let type_id = CodeGenVisitor::type_conversion(&t);
+                            let size_text = format!(
+                                "int {}_size = {};\n",
+                                identifier.address, size_expr.address
+                            );
+                            let alloc_text = format!(
+                                "{} = ({}*) malloc({} * sizeof({}));\n",
+                                identifier.address,
+                                type_id,
+                                size_expr.address,
+                                type_id
+                            );
+                            self.add_code(size_text);
+                            self.add_code(alloc_text);
                         }
-                    }
+                    },
+                    _ => println!("this should not be a simple type"),
                 }
             }
-            _ => (), // TODO normal functions
         }
     }
-
-    fn visit_argument(&mut self, node: &mut ArgumentNode) {
-        for child in node.get_children() {
-            child.accept(self);
-        }
-    }
-
-    fn visit_if(&mut self, node: &mut IfNode) {
+    fn visit_if(
+        &mut self,
+        condition: &TypedExpression,
+        body: &TypedStatement,
+        else_body: &Option<Box<TypedStatement>>,
+    ) {
         let else_label = self.get_new_label();
         let end_label = self.get_new_label();
-        if let Some(condition) = node.get_condition() {
-            condition.accept(self);
-            let cond_addr = condition.get_result_addr();
-            let jump_text = format!("if ({} != 1 ) {{ goto {}; }}\n", cond_addr, else_label);
-            self.buffer.push_str(jump_text.as_str());
-            if let Some(body) = node.get_body() {
-                body.accept(self);
-                let jump_over_else = format!("goto {};\n", end_label);
-                self.buffer.push_str(jump_over_else.as_str());
-            }
-            let else_label_target = format!("{}:\n", else_label);
-            self.buffer.push_str(else_label_target.as_str());
-            if let Some(else_body) = node.get_else_body() {
-                else_body.accept(self);
-            } else {
-                let goto_end = format!("goto {};\n", end_label);
-                self.buffer.push_str(goto_end.as_str());
-            }
-            let end_label_target = format!("{}:\n", end_label);
-            self.buffer.push_str(end_label_target.as_str());
+        self.visit_expression(condition);
+        let cond_addr = condition.address.clone();
+        let jump_text =
+            format!("if ({} != 1 ) {{ goto {}; }}\n", cond_addr, else_label);
+        self.add_code(jump_text);
+        self.visit_statement(body);
+        let jump_over_else = format!("goto {};\n", end_label);
+        self.add_code(jump_over_else);
+        let else_label_target = format!("{}:\n", else_label);
+        self.add_code(else_label_target);
+        if let Some(else_body) = else_body {
+            self.visit_statement(else_body);
+        } else {
+            let goto_end = format!("goto {};\n", end_label);
+            self.add_code(goto_end);
         }
+        let end_label_target = format!("{}:\n", end_label);
+        self.add_code(end_label_target);
     }
 
-    fn visit_while(&mut self, node: &mut WhileNode) {
+    fn visit_while(
+        &mut self,
+        condition: &TypedExpression,
+        body: &TypedStatement,
+    ) {
         let loop_start_label = self.get_new_label();
         let end_label = self.get_new_label();
         let loop_start_label_target = format!("{}:\n", loop_start_label);
-        self.buffer.push_str(loop_start_label_target.as_str());
-        if let Some(condition) = node.get_condition() {
-            condition.accept(self);
-            let cond_addr = condition.get_result_addr();
-            let jump_text = format!("if ({} != 1 ) {{ goto {}; }}\n", cond_addr, end_label);
-            self.buffer.push_str(jump_text.as_str());
-            if let Some(body) = node.get_body() {
-                body.accept(self);
-                let start_jump_text = format!("goto {};", loop_start_label);
-                self.buffer.push_str(start_jump_text.as_str());
-            }
-            self.buffer.push_str(format!("{}:\n", end_label).as_str());
-        }
+        self.add_code(loop_start_label_target);
+        self.visit_expression(condition);
+        let cond_addr = condition.address.clone();
+        let jump_text =
+            format!("if ({} != 1 ) {{ goto {}; }}\n", cond_addr, end_label);
+        self.add_code(jump_text);
+        self.visit_statement(body);
+        let start_jump_text = format!("goto {};", loop_start_label);
+        self.add_code(start_jump_text);
+        self.add_code(format!("{}:\n", end_label));
     }
 
-    fn visit_assert(&mut self, node: &mut AssertNode) {
-        for child in node.get_children() {
-            child.accept(self);
+    fn visit_assert(&mut self, token: &Token, condition: &TypedExpression) {
+        self.visit_expression(condition);
+        let cond_addr = condition.address.clone();
+        let line = token.row;
+        let assert_msg = format!("On line {}\\n", line);
+        let text = format!("mp_assert({}, \"{}\");\n", cond_addr, assert_msg);
+        self.buffer.push_str(text.as_str());
+    }
+
+    fn visit_call(
+        &mut self,
+        address: &Address,
+        arguments: &Vec<TypedExpression>,
+    ) {
+        println!("Visiting call");
+        for arg in arguments {
+            self.visit_expression(arg);
         }
-        if let Some(condition) = node.get_condition() {
-            let cond_addr = condition.get_result_addr();
-            let line = node.get_token().row;
-            let assert_msg = format!("On line {}\\n", line);
-            let text = format!("mp_assert({}, \"{}\");\n", cond_addr, assert_msg);
-            self.buffer.push_str(text.as_str());
+        let args_text = self.args_call_format(arguments);
+        let text = format!("{}{};\n", address, args_text);
+        self.add_code(text);
+    }
+    fn visit_return(
+        &mut self,
+        _token: &Token,
+        value: &Option<TypedExpression>,
+    ) {
+        let text = if let Some(return_val) = value {
+            self.visit_expression(return_val);
+            format!("return {};", return_val.address)
+        } else {
+            String::from("return;")
+        };
+        self.add_code(text);
+    }
+    fn visit_expression(&mut self, node: &TypedExpression) {
+        match &node.substructure {
+            TypedExpressionStructure::Binary(lhs, rhs) => self
+                .visit_binary_expression(
+                    &lhs,
+                    &rhs,
+                    &node.token,
+                    &node.address,
+                    &node.node_type,
+                ),
+            TypedExpressionStructure::Call(token, args) => {
+                self.visit_call_expression(token, args, &node.address)
+            }
+            TypedExpressionStructure::Size(array_address) => {
+                self.visit_size(&array_address, &node.address)
+            }
+            TypedExpressionStructure::Unary(expr) => {
+                self.visit_unary(node, expr)
+            }
+            TypedExpressionStructure::Literal => {
+                self.visit_literal(&node.token, &node.address, &node.node_type)
+            }
+            TypedExpressionStructure::Variable(var) => self.visit_variable(var),
         }
     }
 }

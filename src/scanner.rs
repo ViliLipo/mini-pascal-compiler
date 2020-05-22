@@ -430,6 +430,7 @@ fn kw_str_to_tokenkind<'a>(kw_str: &'a str) -> TokenKind {
         "program" => TokenKind::Program,
         "assert" => TokenKind::Assert,
         "return" => TokenKind::Return,
+        "not" => TokenKind::Not,
         _ => TokenKind::Error,
     }
 }
@@ -456,7 +457,6 @@ fn special_symbol_to_tokenkind<'a>(kw_str: &'a str) -> TokenKind {
         ":" => TokenKind::Colon,
         ";" => TokenKind::SemiColon,
         ":=" => TokenKind::Assign,
-        "!" => TokenKind::Not,
         _ => TokenKind::Error,
     }
 }

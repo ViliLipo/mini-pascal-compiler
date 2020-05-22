@@ -4,9 +4,19 @@ use crate::visitor::Visitor;
 
 pub struct PrintVisitor {}
 
-impl PrintVisitor{
+impl PrintVisitor {
     pub fn new() -> Box<dyn Visitor> {
-        Box::from(PrintVisitor{})
+        Box::from(PrintVisitor {})
+    }
+    fn visit_type_description(&mut self, type_description: &TypeDescription) {
+        match type_description {
+            TypeDescription::Simple(t) => print!("{}", t.lexeme),
+            TypeDescription::Array(t, e) => {
+                print!("(Array of {}, length: ", t.lexeme);
+                self.visit_expression(e);
+                print!(")");
+            }
+        }
     }
 }
 
@@ -23,11 +33,35 @@ impl Visitor for PrintVisitor {
         }
     }
 
-    fn visit_subroutine(&mut self, node: &Subroutine) {} // TODO SUBROUTINES
+    fn visit_subroutine(&mut self, node: &Subroutine) {
+        match node {
+            Subroutine::Function(name, params, block) => (),
+            Subroutine::Procedure(name, params, block) => {
+                self.visit_procedure(name, params, block)
+            }
+        }
+    }
+
+    fn visit_procedure(
+        &mut self,
+        name: &Token,
+        params: &Vec<(Token, TypeDescription)>,
+        body: &Vec<Statement>,
+    ) {
+        print!("Function {}( ", name.lexeme);
+        for param in params {
+            let (id, type_description) = param;
+            print!("{} : ", id.lexeme);
+            self.visit_type_description(type_description);
+            print!(",");
+        }
+        println!(")");
+        self.visit_block(body);
+    }
 
     fn visit_block(&mut self, node: &Vec<Statement>) {
         println!("Block[");
-        for statement in node{
+        for statement in node {
             self.visit_statement(&statement);
         }
         print!("]");
@@ -38,16 +72,20 @@ impl Visitor for PrintVisitor {
             Statement::Declaration(token, type_description) => {
                 self.visit_declaration(token, type_description)
             }
-            Statement::While(condition, body) => self.visit_while(condition, body),
+            Statement::While(condition, body) => {
+                self.visit_while(condition, body)
+            }
             Statement::If(condition, body, maybe_else_body) => {
                 if let Some(else_body) = maybe_else_body {
                     self.visit_if(condition, body, Some(else_body))
                 } else {
                     self.visit_if(condition, body, None)
                 }
-            },
+            }
             Statement::Block(block) => self.visit_block(block),
-            Statement::Assert(token, expression) => self.visit_assert(token, expression),
+            Statement::Assert(token, expression) => {
+                self.visit_assert(token, expression)
+            }
             Statement::Call(id, params) => self.visit_call(id, params),
             Statement::Return(token, value) => self.visit_return(token, value),
         }
@@ -61,7 +99,11 @@ impl Visitor for PrintVisitor {
         print!(")");
     }
 
-    fn visit_declaration(&mut self, token: &Token, type_description: &TypeDescription) {
+    fn visit_declaration(
+        &mut self,
+        token: &Token,
+        type_description: &TypeDescription,
+    ) {
         print!("Declaration( {} : ", token.lexeme.clone());
         match type_description {
             TypeDescription::Simple(t) => print!("{}", t.lexeme.clone()),
@@ -96,7 +138,6 @@ impl Visitor for PrintVisitor {
         print!(" ) do \n");
         self.visit_statement(body);
         print!("end while");
-
     }
     fn visit_assert(&mut self, _token: &Token, condition: &Expression) {
         print!("assert(");
@@ -122,7 +163,9 @@ impl Visitor for PrintVisitor {
         match node {
             Expression::Literal(t) => self.visit_literal(t),
             Expression::Variable(v) => self.visit_variable(v),
-            Expression::Binary(lhs, rhs, op) => self.visit_binary_expression(lhs, rhs, op),
+            Expression::Binary(lhs, rhs, op) => {
+                self.visit_binary_expression(lhs, rhs, op)
+            }
             Expression::Unary(_op, _rhs) => (), // TODO: UNARY
             Expression::Call(id, parameters) => self.visit_call(id, parameters),
         }
@@ -140,7 +183,12 @@ impl Visitor for PrintVisitor {
             }
         }
     }
-    fn visit_binary_expression(&mut self, lhs: &Expression, rhs: &Expression, op: &Token) {
+    fn visit_binary_expression(
+        &mut self,
+        lhs: &Expression,
+        rhs: &Expression,
+        op: &Token,
+    ) {
         print!("(");
         self.visit_expression(&lhs);
         print!(" {} ", op.lexeme);

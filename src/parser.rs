@@ -31,8 +31,10 @@ impl Parser {
     fn handle_error(&mut self, msg: &str) {
         let line = self.current_token.row + 1;
         let column = self.current_token.column + 1;
-        let complete_message =
-            format!("{} On line: {}, column: {}.", msg, line, column);
+        let complete_message = format!(
+            "Syntax error: {} On line: {}, column: {}.",
+            msg, line, column
+        );
         self.errors.push(complete_message);
     }
 
@@ -82,8 +84,30 @@ impl Parser {
     }
 
     fn parameters(&mut self) -> Option<Vec<(Token, TypeDescription)>> {
-        let parameters = Vec::new();
+        let mut parameters = Vec::new();
         self.next_token();
+        loop {
+            match self.ctt {
+                TokenKind::Identifier => {
+                    let id = self.current_token.clone();
+                    self.next_token();
+                    if let Err(msg) = self.skip_delimiter(TokenKind::Colon) {
+                        self.handle_error(msg.as_str());
+                    } else {
+                        if let Some(type_construct) = self.type_construct() {
+                            let param = (id, type_construct);
+                            parameters.push(param);
+                        }
+                    }
+                }
+                TokenKind::Comma => self.next_token(),
+                TokenKind::CloseBracket => {
+                    self.next_token();
+                    break;
+                }
+                _ => break,
+            }
+        }
         Some(parameters)
     }
 
@@ -92,7 +116,32 @@ impl Parser {
     }
 
     fn procedure(&mut self) -> Option<Subroutine> {
-        None
+        self.next_token();
+        if let TokenKind::Identifier = self.ctt {
+            let token = self.current_token.clone();
+            self.next_token();
+            if let Some(parameters) = self.parameters() {
+                if let Err(msg) = self.skip_delimiter(TokenKind::SemiColon) {
+                    self.handle_error(msg.as_str());
+                } else {
+                    if let Some(block) = self.block() {
+                        if let Statement::Block(is_block_ok) = block {
+                            if let Err(msg) =
+                                self.skip_delimiter(TokenKind::SemiColon)
+                            {
+                                self.handle_error(msg.as_str());
+                            }
+                            return Some(Subroutine::Procedure(
+                                token,
+                                parameters,
+                                is_block_ok,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        return None;
     }
 
     fn block(&mut self) -> Option<Statement> {
@@ -319,7 +368,11 @@ impl Parser {
         if let TokenKind::Return = self.current_token.token_kind {
             let token = self.current_token.clone();
             self.next_token();
-            let expression = self.expression();
+            let expression = if !(self.ctt == TokenKind::SemiColon) {
+                self.expression()
+            } else {
+                None
+            };
             Some(Statement::Return(token, expression))
         } else {
             None
@@ -435,6 +488,16 @@ impl Parser {
                     }
                 }
             }
+            TokenKind::Not => {
+                let token = self.current_token.clone();
+                self.next_token();
+                if let Some(rhs_node) = self.factor() {
+                    Some(Expression::Unary(Box::from(rhs_node), token))
+                } else {
+                    self.handle_error("Expected right hand side for unary");
+                    None
+                }
+            }
             _ => {
                 self.handle_error(
                     format!("Cant create factor from {}", self.ctt).as_str(),
@@ -505,24 +568,33 @@ impl Parser {
             TokenKind::OpenBracket => {
                 let mut arguments = Vec::new();
                 self.next_token();
-                if let Some(expr) = self.expression() {
-                    arguments.push(expr);
-                    loop {
-                        if let TokenKind::Comma = self.current_token.token_kind
-                        {
-                            self.next_token();
-                            if let Some(expr) = self.expression() {
-                                arguments.push(expr)
+                match self.ctt {
+                    TokenKind::CloseBracket => {
+                        self.next_token();
+                        Some(arguments)
+                    }
+                    _ => {
+                        if let Some(expr) = self.expression() {
+                            arguments.push(expr);
+                            loop {
+                                if let TokenKind::Comma = self.ctt {
+                                    self.next_token();
+                                    if let Some(expr) = self.expression() {
+                                        arguments.push(expr)
+                                    }
+                                } else {
+                                    break;
+                                }
                             }
-                        } else {
-                            break;
                         }
+                        if let Err(msg) =
+                            self.skip_delimiter(TokenKind::CloseBracket)
+                        {
+                            self.errors.push(msg)
+                        }
+                        Some(arguments)
                     }
                 }
-                if let Err(msg) = self.skip_delimiter(TokenKind::CloseBracket) {
-                    self.errors.push(msg)
-                }
-                Some(arguments)
             }
             _ => None,
         }

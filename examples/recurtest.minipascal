@@ -1,0 +1,13 @@
+program recurtest;
+procedure recur(i : integer);
+begin
+  if i <= 1 then writeln(i)
+  else
+  begin
+    writeln(i);
+    recur(i -1);
+  end
+end;
+begin
+  recur(10);
+end.

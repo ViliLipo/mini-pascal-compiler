@@ -1,7 +1,9 @@
 use crate::ast::NodeType;
+use crate::ast::Address;
 use crate::ast::SimpleType;
 use std::collections::HashMap;
 
+#[derive(PartialEq)]
 pub enum ConstructCategory {
     SimpleVar,
     ArrayVar,
@@ -19,7 +21,7 @@ pub struct Entry {
     pub value: String,
     pub entry_type: NodeType,
     pub scope_number: i32,
-    pub address: String,
+    pub address: Address,
 }
 
 
@@ -98,6 +100,11 @@ impl Symboltable {
 
     pub fn exit_scope(&mut self) {
         self.scopestack.pop();
+        if let Some(no) = self.scopestack.last() {
+            self.current_scope_number = *no;
+        } else {
+            self.current_scope_number = 0;
+        }
     }
 
     pub fn add_entry(&mut self, entry: Entry) {
@@ -163,25 +170,25 @@ fn predefined_ids() -> Vec<Entry> {
         name: String::from("Boolean"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: NodeType::Simple(SimpleType::String),
+        entry_type: NodeType::Simple(SimpleType::Boolean),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("integer"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: NodeType::Simple(SimpleType::String),
+        entry_type: NodeType::Simple(SimpleType::Integer),
         scope_number: 0,
-        address: String::new(),
+        address:Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("real"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
-        entry_type: NodeType::Simple(SimpleType::String),
+        entry_type: NodeType::Simple(SimpleType::Real),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("string"),
@@ -189,7 +196,7 @@ fn predefined_ids() -> Vec<Entry> {
         value: String::from(""),
         entry_type: NodeType::Simple(SimpleType::String),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("false"),
@@ -197,7 +204,7 @@ fn predefined_ids() -> Vec<Entry> {
         value: String::from("0"),
         entry_type: NodeType::Simple(SimpleType::Boolean),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("true"),
@@ -205,7 +212,7 @@ fn predefined_ids() -> Vec<Entry> {
         value: String::from("1"),
         entry_type: NodeType::Simple(SimpleType::Boolean),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(1),
     });
     entries.push(Entry {
         name: String::from("writeln"),
@@ -213,7 +220,7 @@ fn predefined_ids() -> Vec<Entry> {
         value: String::from(""),
         entry_type: NodeType::Simple(SimpleType::String),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("read"),
@@ -221,14 +228,14 @@ fn predefined_ids() -> Vec<Entry> {
         value: String::from(""),
         entry_type: NodeType::Simple(SimpleType::String),
         scope_number: 0,
-        address: String::new(),
+        address: Address::new_simple(0),
     });
     entries.push(Entry {
         name: String::from("size"),
         category: ConstructCategory::Special,
         value: String::from(""),
         entry_type: NodeType::Simple(SimpleType::Integer),
-        address: String::new(),
+        address: Address::new_simple(0),
         scope_number: 0,
     });
 

@@ -4,11 +4,11 @@ begin
   var d: integer;
   i[2] := 3;
   d := (i[2] + 5) * (1000/3);
-  if d < 1000 then writeln(i) else
+  if d < 1000 then writeln(i[2]) else
   begin
     var x: integer;
     x := 3 + 8;
     i[2] := i[2] + x;
-    writeln(i)
+    writeln(i[2], "lmaoo")
   end
 end.

@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::scanner::Token;
 
 pub enum AST {
@@ -38,6 +39,7 @@ pub enum Variable {
     Indexed(Token, Expression),
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub enum SimpleType {
     Boolean,
     String,
@@ -45,6 +47,7 @@ pub enum SimpleType {
     Integer,
 }
 
+#[derive(PartialEq, Clone, Debug)]
 pub enum NodeType {
     Simple(SimpleType),
     ArrayOf(SimpleType),
@@ -60,62 +63,100 @@ pub enum TypedTypeDescription {
 }
 
 pub enum TypedSubroutine {
-    Function(Token, Vec<(Token, TypeDescription)>, Vec<TypedStatement>),
-    Procedure(Token, Vec<(Token, TypeDescription)>, Vec<TypedStatement>),
+    Function(Address, Vec<(TypedVariable, TypedTypeDescription)>, Vec<TypedStatement>),
+    Procedure(Address, Vec<(TypedVariable, TypedTypeDescription)>, Vec<TypedStatement>),
 }
 
-
-pub enum TypedVariableCore {
-    Simple(Token),
-    Indexed(Token, SimplyTypedExpression),
+pub struct TypedVariable {
+    pub token: Token,
+    pub address: Address,
+    pub node_type: NodeType,
+    pub substructure: TypedVariableStructure,
 }
 
-pub enum SimplyTypedVariable {
-    Int(TypedVariableCore),
-    Boolean(TypedVariableCore),
-    String(TypedVariableCore),
-    Real(TypedVariableCore),
+#[derive(PartialEq, Clone, Debug)]
+pub struct Address {
+    data: AddressData,
 }
-    
 
-pub enum  TypedVariable {
-    Simple(SimplyTypedVariable, u64),
-    ArrayOf(SimplyTypedVariable, u64),
+impl Address {
+    pub fn new_simple(address: u64) -> Address {
+        Address{
+            data: AddressData::Simple(address),
+        }
+    }
+
+    pub fn new_indexed(address:Address, index: Address) -> Address {
+        Address{
+            data: AddressData::Indexed(address.as_u64(), index.as_u64()),
+        }
+    }
+
+    pub fn as_u64(&self) -> u64 {
+        match self.data {
+            AddressData::Simple(address) => address,
+            AddressData::Indexed(address, _index) => address,
+        }
+    }
+
+    pub fn register_format(&self) -> String {
+        match self.data {
+            AddressData::Simple(address) => {
+                format!("r{}", address)
+            },
+            AddressData::Indexed(address, index) => {
+                format!("r{}[r{}]", address, index)
+            }
+        }
+    }
 }
-    
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.register_format())
+    }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum AddressData {
+    Simple(u64),
+    Indexed(u64, u64)
+}
+
+pub enum TypedVariableStructure {
+    Simple,
+    Indexed(TypedExpression),
+}
+
 pub enum TypedStatement {
+    Assert(Token, TypedExpression),
     Assign(TypedVariable, TypedExpression),
-    Declaration(Token, TypedTypeDescription),
     Block(Vec<TypedStatement>),
+    Call(Address, Vec<TypedExpression>),
+    Declaration(TypedVariable, TypedTypeDescription),
     If(
-        SimplyTypedExpression,
+        TypedExpression,
         Box<TypedStatement>,
         Option<Box<TypedStatement>>,
     ),
-    While(SimplyTypedExpression, Box<TypedStatement>),
-    Assert(Token, SimplyTypedExpression),
-    Call(Token, Vec<TypedExpression>),
+    Read(Vec<Box<TypedVariable>>),
     Return(Token, Option<TypedExpression>),
+    While(TypedExpression, Box<TypedStatement>),
+    Write(Vec<TypedExpression>),
 }
 
-pub enum TypedExpression {
-    Simple(SimplyTypedExpression, u64),
-    ArrayOf(SimplyTypedExpression, u64),
+pub struct TypedExpression {
+    pub token: Token,
+    pub address: Address,
+    pub node_type: NodeType,
+    pub substructure: TypedExpressionStructure,
 }
 
-pub enum SimplyTypedExpression {
-    Int(TypedExpressionCore, u64),
-    Boolean(TypedExpressionCore, u64),
-    String(TypedExpressionCore, u64),
-    Real(TypedExpressionCore, u64),
-}
-
-pub enum TypedExpressionCore {
-    Literal(Token),
+pub enum TypedExpressionStructure {
+    Binary(Box<TypedExpression>, Box<TypedExpression>),
+    Call(Address, Vec<TypedExpression>),
+    Literal,
+    Size(Address),
+    Unary(Box<TypedExpression>),
     Variable(Box<TypedVariable>),
-    Binary(Box<SimplyTypedExpression>, Box<SimplyTypedExpression>, Token),
-    Unary(Box<SimplyTypedExpression>, Token),
-    Call(Token, Vec<TypedExpression>),
 }
-
-
