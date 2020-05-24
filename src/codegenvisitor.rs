@@ -538,7 +538,6 @@ impl CodeGenVisitor {
         match &var.node_type {
             NodeType::Simple(simple_type) => match simple_type {
                 SimpleType::String => {
-                    println!("added size");
                     self.declaration_buffer.push_str(
                         format!(
                             "int {}_size = {};\n",
@@ -609,12 +608,12 @@ impl TypedVisitor for CodeGenVisitor {
     fn visit_ast(&mut self, node: &TypedAST) {
         let TypedAST::Program(_token, subroutines, main_block) = node;
         self.insert_runtime("src/runtime.c");
+        self.declaration_buffer
+            .push_str("short r0 = 0;\nshort r1 = 1;\n");
         for sub in subroutines {
             self.visit_subroutine(sub);
         }
         self.declaration_buffer.push_str("int main() {\n");
-        self.declaration_buffer
-            .push_str("int r0 = 0;\nint r1 = 1;\n");
         self.visit_block(main_block);
         self.buffer.push_str("return 0;}\n");
         self.ready_buffer.push_str(self.declaration_buffer.as_str());

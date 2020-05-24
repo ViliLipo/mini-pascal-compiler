@@ -447,7 +447,7 @@ mod test {
         let mut scanner = get_scanner(text);
         let ok_tokens = vec![
             (TokenKind::Var, "var"),
-            (TokenKind::Identifier, "MAXIMIUM_POWER_999"),
+            (TokenKind::Identifier, "maximium_power_999"),
             (TokenKind::Colon, ":"),
             (TokenKind::Identifier, "integer"),
             (TokenKind::Assign, ":="),

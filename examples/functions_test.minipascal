@@ -11,7 +11,30 @@ begin
     return i * factorial(i-1);
   end;
 end;
+function sum(A: array[5] of integer): integer;
 begin
-  writeln(add(add(10, 8), 10));
-  writeln(factorial(3));
+  var s: integer;
+  var i: integer;
+  s := 0;
+  i := 0;
+  while i < A.size do
+  begin
+    s := s + A[i];
+    i := i + 1;
+  end;
+  return s;
+end;
+begin
+  assert(add(8, 4) = 12);
+  assert(factorial(3) = 6);
+  var i : integer;
+  i := 0;
+  var A: array[5] of integer;
+  while i < 5 do
+  begin
+    A[i] := 5;
+    i := i + 1;
+  end;
+  assert(sum(A) = 25);
+  writeln("Function test passed");
 end.

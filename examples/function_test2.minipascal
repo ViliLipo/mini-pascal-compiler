@@ -1,19 +1,10 @@
-program proceduretest;
-procedure stringmut(s: string);
-begin
-  s := s + " Mutated?";
-  writeln(s);
-end;
-procedure writesize(a: array[10] of integer);
-begin
-  writeln(a.size);
-end;
+program functiontest2;
 function concat(a: array[3] of string): string;
 begin
   var s: string;
-  s := "";
+  s := a[0];
   var i: integer;
-  i := 0;
+  i := 1;
   while i < a.size do
   begin
     s := s + (" " + a[i]);
@@ -33,4 +24,6 @@ begin
   strings[1] := "Kong";
   strings[2] := "Rules";
   writeln(concat(strings));
+  assert(concat(strings) = "Donkey Kong Rules");
+  writeln("Function test 2 passed.");
 end.

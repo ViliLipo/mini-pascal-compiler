@@ -49,25 +49,35 @@ overbearing to read, and I fully recognize that no one would consider the
 src/typefolder.rs to be clean code.
 
 \section{Architecture}
+
 The architecture of this compiler mostly follows the directions
 given in the lecture materials, but instead of visiting and mutating
 one AST structures, there is two distinct structures. The semantic
 analysis produces the TypedAst structure, that is then
-processed by the CodeGenVisitor.
+processed by the CodeGenVisitor. During the semantic analysis
+a symbol table is used to store variable information like type and unique address.
+This data is then added to the final AST-representation and the CodeGenVisitor does
+not need a symboltable at all. UML-diagram of the whole architecture can be
+seen in figure~\ref{uml}.
 
 \begin{figure}
-  \caption{Uml of the Architecture}
+  \caption{Uml of the Architecture}\label{uml}
   \includegraphics[scale=0.3]{ast}
 \end{figure}
 
 \section{Instructions and testing}
 
-To build the application on Linux platform
-the Rust toolchain must be installed. Then the application can be run with
-\texttt{cargo run examples/test.minipascal target/test.c}. Alternatively
-it can be built with \texttt{cargo build} and then the binary is
-\texttt{target/debug/mini-pascal-compiler}. The test inputs
-are in the folder \texttt{examples}.
+To build the application on Linux platform the Rust toolchain must be
+installed. Then the application can be run with \texttt{cargo run
+examples/test.minipascal target/test.c}. Alternatively it can be built with
+\texttt{cargo build} and then the binary is
+\texttt{target/debug/mini-pascal-compiler}. If there is issues in the build I
+also included a binary of the application in the \texttt{bin} folder with the
+name \texttt{vmpc} (Vili's Mini-Pascal Compiler). It should work on amd64 linux
+platforms with no extra dependencies.  The test inputs are in the folder
+\texttt{examples}. There is Rust unit tests for the source and scanner modules,
+but due to lack of time the rest of the application is only tested via the
+files in examples.
 
 \section{Mini-Pascal token patterns}
 \begin{figure}
@@ -130,16 +140,15 @@ does not give any special attention to predefined identifiers.
 \end{verbatim}
 \end{figure}
 
-The Mini-Pascal context free grammar can be observed in figure~\ref{cfg}.
-Here a call or variable construction is created to solve the violation
-of LL (1) rule. Now as the language syntax does not allow
-to assign a value to a call, in the parsing function the return type
-of call or variable is checked and based on that we see if
-the assign can be constructed. If a call is not followed by ":=" 
-a call statement is returned. So no actual backtracking is used,
-this is like using LR parsing for a one part of the syntax.
-In factor this does not create any issues as all of the
-variants of call or variable are legal variants of factor.
+The Mini-Pascal context free grammar can be observed in figure~\ref{cfg}.  Here
+a call or variable construction is created to solve the violation of LL (1)
+rule. Now as the language syntax does not allow to assign a value to a call, in
+the parsing function the return type of call or variable is checked and based
+on that we see if the assign can be constructed. If a call is not followed by
+":=" a call statement is returned. So no actual backtracking is used, as the
+scanner is not made to reverse at any point.  In factor this does not create
+any issues as all of the variants of call or variable are legal variants of
+factor.
 
 The parser does not recognize writeln or read as statements.
 Those are parsed as regular calls. Those are
@@ -251,28 +260,35 @@ natural in the unlimited register machine idiom.  If I had  modelled some
 runtime stack, then dynamic scope might have been a good alternative.
 
 Var-parameters are not implemented to the final version due to lack of time.
-So instead arrays are passed as references to subroutines.  And other types as
+So instead arrays are passed as references to subroutines and other types as
 values. Strings are char-pointers in my compiled C, but due to every string
 concatenation allocating a new memory section it does not mutate the existing
-string. This is somewhat similar to how simple and
-complex types work in Java.
-
-Strings have maximum length of 512 characters, but for literals only
+string.  Strings have maximum length of 512 characters, but for literals only
 the needed amount of memory is allocated. There is no garbage collection
 whatsoever.
 
 Recursive calls work. A subroutine can call subroutines that were declared
-before it but not the ones that are declared after it.
+before it but not the ones that are declared after it. The change to 
+declare functions before analysing their bodies is doable, but not trivial
+in the current folding code.
 
 Predefined identifiers are added to the symbol table when it is created.  There
 entries for type identifiers, special subroutines and predefined values are
-added to top scope. Then in TypeFolder if a user covers any of these names in
+added to top scope. Then in TypeFolder if a user shadows any of these names in
 lower scopes the new entries will appear first in a lookup operation.
-The change to declare the subroutines before folding their bodies is not trivial,
-but doable.
+ Some predefined identifiers like type identifiers, read and writeln
+are regarded as special in symbol table and the semantic analysis takes this in 
+to account when producing the TypeAst-structure. In the TypedAst structure
+there exists statement variants for read and write, that do not exist
+in the untyped AST. This is because the symbol table information is needed
+to determine if the user has shadowed those special identifiers.
 
 Booleans are printed as integers 0 meaning false and 1 true.
-This could be fixed by extending the runtime.
+This could be fixed by extending the runtime. Boolean values
+true and false are stored in global variables \texttt{r1} and \texttt{r2},
+in the generated c-code. This is done so that the code can be uniform
+for all variables and that no special case has to be done for these 
+predefined ones.
 
 
 \section{Semantic analysis}
@@ -312,7 +328,8 @@ the parameter types.
 \begin{enumerate}
   \item Subroutines
     \begin{enumerate}
-      \item Subroutine must return a correct type
+      \item Function must return a correct type
+      \item Parameters have valid types
     \end{enumerate}
   \item Expressions
     \begin{enumerate}
@@ -366,7 +383,9 @@ only once. Then I designed the three buffer system, where the code is generated
 to three separate string buffers. The first is for declarations, and second is
 for the main body of the code.  Then when a subroutine or main block is
 complete the both of the buffers are pushed to the ready buffer the
-declarations first. Using this method the gotos can not cause duplicate
+declarations first. 
+
+Using this method the gotos can not cause duplicate
 declarations in C-runtime. This actually reminded me from a code style rule
 from my C-programming course in Lappeenranta University Of Technology, where
 the lecturer demanded that all variables are declared at the start of a
@@ -376,7 +395,9 @@ way.
 
 The specification for I/O-operations was a positive suprise to me, as it was
 easy to match the desired behaviour using C-standard library functions
-`printf' and `scanf'.
+`printf' and `scanf'. So the format strings are just generated based
+on the argument types and the argument addresses are passed to the
+C-functions.
 
 Arrays were a bit difficult to figure out, as the size is determined in runtime
 C, so dynamic memory management had to be used. I decided to save the size for
@@ -451,6 +472,12 @@ write an array makes \texttt{printf} format string to be ``Error array printing
 not implemented''. In addition to that if the visitor fails to read a C-runtime
 file an error message is printed. This is the extent of error handling in the
 CodeGeneration visitor.
+
+Worst issues for the parser are when there is issues in subroutine declarations.
+If there is issue there the parser will most likely parse the subroutine
+body as the main body. That can also lead to quite confusing error messages.
+The first error message should provide the information on what exactly went
+even in that case.
 
 \section{Work hour log}
 \begin{center}
