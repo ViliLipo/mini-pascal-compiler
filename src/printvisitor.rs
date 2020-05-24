@@ -1,11 +1,11 @@
 use crate::ast::*;
-use crate::scanner::Token;
+use crate::token::Token;
 use crate::visitor::Visitor;
 
 pub struct PrintVisitor {}
 
 impl PrintVisitor {
-    pub fn new() -> Box<dyn Visitor> {
+    pub fn _new() -> Box<dyn Visitor> {
         Box::from(PrintVisitor {})
     }
     fn visit_type_description(&mut self, type_description: &TypeDescription) {
@@ -35,7 +35,9 @@ impl Visitor for PrintVisitor {
 
     fn visit_subroutine(&mut self, node: &Subroutine) {
         match node {
-            Subroutine::Function(name, params, block) => (),
+            Subroutine::Function(name, params, block, out_type) => {
+                self.visit_function(name, params, block, out_type)
+            }
             Subroutine::Procedure(name, params, block) => {
                 self.visit_procedure(name, params, block)
             }
@@ -48,7 +50,7 @@ impl Visitor for PrintVisitor {
         params: &Vec<(Token, TypeDescription)>,
         body: &Vec<Statement>,
     ) {
-        print!("Function {}( ", name.lexeme);
+        print!("Procedure {}( ", name.lexeme);
         for param in params {
             let (id, type_description) = param;
             print!("{} : ", id.lexeme);
@@ -56,6 +58,26 @@ impl Visitor for PrintVisitor {
             print!(",");
         }
         println!(")");
+        self.visit_block(body);
+    }
+
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        params: &Vec<(Token, TypeDescription)>,
+        body: &Vec<Statement>,
+        out_type: &TypeDescription,
+    ) {
+        print!("Function {}( ", name.lexeme);
+        for param in params {
+            let (id, type_description) = param;
+            print!("{} : ", id.lexeme);
+            self.visit_type_description(type_description);
+            print!(",");
+        }
+        print!(") -> ");
+        self.visit_type_description(out_type);
+        println!(";");
         self.visit_block(body);
     }
 
@@ -166,7 +188,11 @@ impl Visitor for PrintVisitor {
             Expression::Binary(lhs, rhs, op) => {
                 self.visit_binary_expression(lhs, rhs, op)
             }
-            Expression::Unary(_op, _rhs) => (), // TODO: UNARY
+            Expression::Unary(rhs, _op) => {
+                print!("Not (");
+                self.visit_expression(rhs);
+                print!(")");
+            }
             Expression::Call(id, parameters) => self.visit_call(id, parameters),
         }
     }

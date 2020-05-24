@@ -1,7 +1,19 @@
 program booleanstest;
 begin
-writeln(true);
-var true : Boolean;
-true := not true;
-writeln(true);
+  var t: Boolean;
+  t := true;
+  assert(t);
+  assert( t = t);
+  assert(t = true);
+  assert(not (t = false));
+  assert(t > false);
+  assert(false < t);
+  assert(t <= true);
+  assert(t >= true);
+  assert(t <> false);
+  assert(t and true);
+  assert(t or true);
+  assert(t or false);
+  assert(not (t and false));
+  writeln("Boolean test passed");
 end.

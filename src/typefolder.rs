@@ -1,33 +1,17 @@
+use crate::address::Address;
 use crate::ast::*;
-use crate::scanner::Token;
-use crate::scanner::TokenKind;
 use crate::symboltable::*;
+use crate::opkind::*;
+use crate::token::Token;
+use crate::token::TokenKind;
+use crate::typedast::*;
 
-pub enum OpKind {
-    Addition,
-    NumArithmetic,
-    Modulo,
-    Relational,
-    BoolArithmetic,
-    E,
-}
-
-pub fn string_as_opkind(op: &String) -> OpKind {
-    match op.as_str() {
-        "+" => OpKind::Addition,
-        "-" | "/" | "*" => OpKind::NumArithmetic,
-        "%" => OpKind::Modulo,
-        "=" | "<>" | "<" | "<=" | ">=" | ">" => OpKind::Relational,
-        "or" | "and" => OpKind::BoolArithmetic,
-        _ => OpKind::E,
-    }
-}
 
 fn type_id_to_simple_type(identifier: &String) -> Option<SimpleType> {
     match identifier.as_str() {
         "string" => Some(SimpleType::String),
         "integer" => Some(SimpleType::Integer),
-        "Boolean" => Some(SimpleType::Boolean),
+        "boolean" => Some(SimpleType::Boolean),
         "real" => Some(SimpleType::Real),
         _ => None,
     }
@@ -74,7 +58,7 @@ impl TypeFolder {
         let line = token.row + 1;
         let column = token.column + 1;
         let complete_message = format!(
-            "Semantic error: {} On line: {}, column: {}.",
+            "Semantic error: {} on line: {}, column: {}.",
             context, line, column
         );
         self.errors.push(complete_message);
@@ -115,13 +99,71 @@ impl TypeFolder {
     ) -> Option<TypedSubroutine> {
         match node {
             Subroutine::Procedure(token, params, body) => {
-                self.visit_procedure(token, params, body, st)
+                self.fold_procedure(token, params, body, st)
             }
-            Subroutine::Function(token, params, body) => None,
+            Subroutine::Function(token, params, body, out_type) => {
+                self.fold_function(token, params, body, out_type, st)
+            }
         }
-    } // TODO Functions
+    }
 
-    fn visit_procedure(
+    fn fold_function(
+        &mut self,
+        token: &Token,
+        params: &Vec<(Token, TypeDescription)>,
+        body: &Vec<Statement>,
+        out_type: &TypeDescription,
+        st: &mut Symboltable,
+    ) -> Option<TypedSubroutine> {
+        let upper_scope_no = st.get_current_scope_number();
+        let address = self.get_new_simple_address();
+        st.new_scope_in_current_scope(false);
+        if let Some(typed_type) = self.fold_type_description(out_type, st) {
+            let node_type = match &typed_type {
+                TypedTypeDescription::Simple(t) => t,
+                TypedTypeDescription::Array(t, _e) => t,
+            };
+            if let Some(typed_params) = self.fold_parameters(params, st) {
+                let entry = Entry {
+                    name: token.lexeme.clone(),
+                    value: String::new(),
+                    scope_number: upper_scope_no,
+                    entry_type: NodeType::Simple(SimpleType::Boolean),
+                    address: address.clone(),
+                    category: ConstructCategory::Function(
+                        self.get_node_type_for_parameters(&typed_params),
+                        node_type.clone(),
+                    ),
+                };
+                st.add_entry(entry);
+                let typed_body_stmnt = self.fold_block(body, st);
+                if self
+                    .validate_return_for_function(&node_type, &typed_body_stmnt)
+                {
+                    if let TypedStatement::Block(typed_body) =
+                        self.fold_block(body, st)
+                    {
+                        st.exit_scope();
+                        return Some(TypedSubroutine::Function(
+                            address,
+                            typed_params,
+                            typed_body,
+                            typed_type,
+                        ));
+                    }
+                } else {
+                    self.handle_error(
+                        token,
+                        "No return statement of correct type found in function",
+                    );
+                }
+            }
+        }
+        st.exit_scope();
+        return None;
+    }
+
+    fn fold_procedure(
         &mut self,
         token: &Token,
         params: &Vec<(Token, TypeDescription)>,
@@ -155,6 +197,49 @@ impl TypeFolder {
         }
         st.exit_scope();
         return None;
+    }
+
+    fn validate_return_for_function(
+        &mut self,
+        node_type: &NodeType,
+        statement: &TypedStatement,
+    ) -> bool {
+        match statement {
+            TypedStatement::Return(_t, maybe_value) => {
+                if let Some(value) = maybe_value {
+                    if value.node_type == node_type.clone() {
+                        return true;
+                    }
+                }
+            }
+            TypedStatement::If(_e, b, eb) => {
+                if self.validate_return_for_function(node_type, b.as_ref()) {
+                    return true;
+                }
+                if let Some(else_body) = eb {
+                    if self.validate_return_for_function(
+                        node_type,
+                        else_body.as_ref(),
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            TypedStatement::While(_c, body) => {
+                if self.validate_return_for_function(node_type, body.as_ref()) {
+                    return true;
+                }
+            }
+            TypedStatement::Block(body) => {
+                for s in body {
+                    if self.validate_return_for_function(node_type, s) {
+                        return true;
+                    }
+                }
+            }
+            _ => (),
+        }
+        false
     }
 
     fn get_node_type_for_parameters(
@@ -246,7 +331,10 @@ impl TypeFolder {
                 if &target.node_type == &value.node_type {
                     return Some(TypedStatement::Assign(target, value));
                 } else {
-                    self.errors.push(format!("Mismatched types in assigment"));
+                    self.handle_error(
+                        &target.token,
+                        "Mismatched types in assigment",
+                    );
                 }
             }
         }
@@ -270,7 +358,7 @@ impl TypeFolder {
                 None
             }
         } else {
-            self.errors.push(format!("Variable declared twice"));
+            self.handle_error(token, "Variable declared twice");
             None
         }
     }
@@ -302,7 +390,7 @@ impl TypeFolder {
                 }
             }
         } else {
-            self.errors.push(format!("Variable declared twice"));
+            self.handle_error(name_token, "Variable declared twice");
             None
         }
     }
@@ -336,14 +424,14 @@ impl TypeFolder {
                         node_type: entry_type.clone(),
                         substructure: TypedVariableStructure::Simple,
                     },
-                    TypedTypeDescription::Simple(type_token.clone()),
+                    TypedTypeDescription::Simple(entry_type.clone()),
                 ))
             } else {
-                self.errors.push(format!("Usage of an undeclared type"));
+                self.handle_error(type_token, "Usage of an undeclared type");
                 None
             }
         } else {
-            self.errors.push(format!("Usage of an unimplented type"));
+            self.handle_error(type_token, "Usage of an unimplented type");
             None
         }
     }
@@ -385,7 +473,7 @@ impl TypeFolder {
                             };
                             st.add_entry(new_entry);
                             let type_description = TypedTypeDescription::Array(
-                                type_token.clone(),
+                                node_type.clone(),
                                 typed_expression,
                             );
                             return Some((
@@ -420,6 +508,67 @@ impl TypeFolder {
         None
     }
 
+    fn fold_type_description(
+        &mut self,
+        type_description: &TypeDescription,
+        st: &mut Symboltable,
+    ) -> Option<TypedTypeDescription> {
+        match type_description {
+            TypeDescription::Simple(token) => {
+                self.fold_simple_type_description(token, st)
+            }
+            TypeDescription::Array(token, expression) => {
+                self.fold_array_type_description(token, expression, st)
+            }
+        }
+    }
+
+    fn fold_simple_type_description(
+        &mut self,
+        name: &Token,
+        st: &mut Symboltable,
+    ) -> Option<TypedTypeDescription> {
+        if let Some(entry) = st.lookup(&name.lexeme) {
+            if let ConstructCategory::TypeId = entry.category {
+                let core_type =
+                    self.simple_type_from_node_type(&entry.entry_type);
+                return Some(TypedTypeDescription::Simple(NodeType::Simple(
+                    core_type,
+                )));
+            }
+        }
+        None
+    }
+
+    fn fold_array_type_description(
+        &mut self,
+        name: &Token,
+        expression: &Expression,
+        st: &mut Symboltable,
+    ) -> Option<TypedTypeDescription> {
+        if let Some(entry) = st.lookup(&name.lexeme) {
+            if let ConstructCategory::TypeId = entry.category {
+                let core_type =
+                    self.simple_type_from_node_type(&entry.entry_type);
+                if let Some(typed_expression) =
+                    self.fold_expression(expression, st)
+                {
+                    if let NodeType::Simple(SimpleType::Integer) =
+                        typed_expression.node_type
+                    {
+                        return Some(TypedTypeDescription::Array(
+                            NodeType::ArrayOf(core_type),
+                            typed_expression,
+                        ));
+                    } else {
+                        self.handle_error(name, "Array size must be integer");
+                    }
+                }
+            }
+        }
+        None
+    }
+
     fn is_valid_type(
         &mut self,
         type_token: &Token,
@@ -429,11 +578,14 @@ impl TypeFolder {
             if let ConstructCategory::TypeId = declared_type.category {
                 true
             } else {
-                self.errors.push(format!("Id does not refer to a type"));
+                self.handle_error(
+                    type_token,
+                    "Identifier does not refer to a type",
+                );
                 false
             }
         } else {
-            self.errors.push(format!("Usage of an undeclared type"));
+            self.handle_error(type_token, "Usage of an undeclared type");
             false
         }
     }
@@ -446,34 +598,33 @@ impl TypeFolder {
         st: &mut Symboltable,
     ) -> Option<TypedStatement> {
         if let Some(typed_condition) = self.fold_expression(condition, st) {
-            if let Some(typed_body) = self.fold_statement(body, st) {
-                return match &typed_condition.node_type {
-                    NodeType::Simple(simple_type) => match simple_type {
-                        SimpleType::Boolean => {
-                            if let Some(eb) = else_body {
-                                if let Some(typed_eb) =
-                                    self.fold_statement(eb, st)
-                                {
-                                    Some(TypedStatement::If(
-                                        typed_condition,
-                                        Box::from(typed_body),
-                                        Some(Box::from(typed_eb)),
-                                    ))
-                                } else {
-                                    None
-                                }
-                            } else {
-                                Some(TypedStatement::If(
-                                    typed_condition,
-                                    Box::from(typed_body),
-                                    None,
-                                ))
-                            }
+            if NodeType::Simple(SimpleType::Boolean)
+                == typed_condition.node_type
+            {
+                if let Some(typed_body) = self.fold_statement(body, st) {
+                    if let Some(has_else_body) = else_body {
+                        if let Some(typed_eb) =
+                            self.fold_statement(has_else_body, st)
+                        {
+                            return Some(TypedStatement::If(
+                                typed_condition,
+                                Box::from(typed_body),
+                                Some(Box::from(typed_eb)),
+                            ));
                         }
-                        _ => None,
-                    },
-                    _ => None,
-                };
+                    } else {
+                        return Some(TypedStatement::If(
+                            typed_condition,
+                            Box::from(typed_body),
+                            None,
+                        ));
+                    }
+                }
+            } else {
+                self.handle_error(
+                    &typed_condition.token,
+                    "If condition must be a Boolean",
+                );
             }
         }
         None
@@ -540,7 +691,7 @@ impl TypeFolder {
             if let Some(typedarg) = self.fold_expression(arg, st) {
                 typedargs.push(typedarg)
             } else {
-                self.errors.push(format!("Failed to check argument"));
+                self.handle_error(token, "Failed to check argument");
             }
         }
         if let Some(entry) = st.lookup(&token.lexeme) {
@@ -552,9 +703,19 @@ impl TypeFolder {
                     .fold_regular_call_expression(
                         token, &entry, parameters, out_type, typedargs,
                     ),
-                _ => None,
+                _ => {
+                    self.handle_error(
+                        token,
+                        format!("{} is not a function", token.lexeme).as_str(),
+                    );
+                    None
+                }
             }
         } else {
+            self.handle_error(
+                token,
+                format!("Can't find function {}", token.lexeme).as_str(),
+            );
             None
         }
     }
@@ -621,17 +782,14 @@ impl TypeFolder {
         parameters: &Vec<NodeType>,
         arguments: &Vec<TypedExpression>,
     ) -> bool {
-        let mut arg_types = Vec::new();
-        for arg in arguments {
-            arg_types.push(arg.node_type.clone());
-        }
         for i in 0..parameters.len() {
             if let Some(param) = parameters.get(i) {
-                if let Some(arg) = arg_types.get(i) {
-                    if param != arg {
-                        self.errors.push(format!(
-                            "Argument type does not match parameters"
-                        ));
+                if let Some(arg) = arguments.get(i) {
+                    if param.clone() != arg.node_type.clone() {
+                        self.handle_error(
+                            &arg.token,
+                            "Argument type does not match parameters",
+                        );
                         return false;
                     }
                 } else {
@@ -668,25 +826,26 @@ impl TypeFolder {
                     self.fold_regular_call(token, entry, parameters, typedargs)
                 }
                 ConstructCategory::Function(_args, _params) => {
-                    self.errors.push(format!(
-                        "Attempting to call Function as statement"
-                    ));
+                    self.handle_error(
+                        token,
+                        "Attempting to call Function as statement",
+                    );
                     None
                 }
                 _ => {
-                    self.errors.push(format!("Call of non subroutine name"));
+                    self.handle_error(token, "Call of non subroutine name");
                     None
                 }
             }
         } else {
-            self.errors.push(format!("Call of undeclared name"));
+            self.handle_error(token, "Call of undeclared name");
             None
         }
     }
 
     fn fold_special_call_stmnt(
         &mut self,
-        token: &Token,
+        _token: &Token,
         entry: &Entry,
         arguments: Vec<TypedExpression>,
     ) -> Option<TypedStatement> {
@@ -707,7 +866,8 @@ impl TypeFolder {
                 TypedExpressionStructure::Variable(typed_var) => {
                     vars.push(typed_var);
                 }
-                _ => self.errors.push(format!("Non variable argument in read")),
+                _ => self
+                    .handle_error(&arg.token, "Non variable argument in read"),
             }
         }
         vars
@@ -715,7 +875,7 @@ impl TypeFolder {
 
     fn fold_regular_call(
         &mut self,
-        token: &Token,
+        _token: &Token,
         entry: &Entry,
         parameters: &Vec<NodeType>,
         arguments: Vec<TypedExpression>,
@@ -770,7 +930,7 @@ impl TypeFolder {
             TokenKind::StringLiteral => Some(SimpleType::String),
             TokenKind::RealLiteral => Some(SimpleType::Real),
             _ => {
-                self.errors.push(format!("Non literal parsed as one"));
+                self.handle_error(token, "Non literal parsed as one");
                 None
             }
         };
@@ -829,6 +989,10 @@ impl TypeFolder {
                 substructure: TypedVariableStructure::Simple,
             })
         } else {
+            self.handle_error(
+                token,
+                format!("Cant find variable {} ", token.lexeme).as_str(),
+            );
             None
         }
     }
@@ -841,12 +1005,14 @@ impl TypeFolder {
     ) -> Option<TypedVariable> {
         if let Some(typed_expression) = self.fold_expression(expression, st) {
             if let Some(entry) = st.lookup(&token.lexeme) {
-                let node_type = NodeType::Simple(node_type_to_simple_type(
-                    &entry.entry_type,
-                ));
-                match &typed_expression.node_type.clone() {
-                    NodeType::Simple(simple_type) => match simple_type {
-                        SimpleType::Integer => Some(TypedVariable {
+                if let ConstructCategory::ArrayVar = entry.category {
+                    let node_type = NodeType::Simple(node_type_to_simple_type(
+                        &entry.entry_type,
+                    ));
+                    if NodeType::Simple(SimpleType::Integer)
+                        == typed_expression.node_type.clone()
+                    {
+                        return Some(TypedVariable {
                             token: token.clone(),
                             address: self.get_new_indexed_address(
                                 entry.address.clone(),
@@ -856,17 +1022,18 @@ impl TypeFolder {
                             substructure: TypedVariableStructure::Indexed(
                                 typed_expression,
                             ),
-                        }),
-                        _ => None,
-                    },
-                    _ => None,
+                        });
+                    } else {
+                        self.handle_error(token, "Array index must be integer");
+                    }
+                } else {
+                    self.handle_error(token, "Indexing of simple variable");
                 }
             } else {
-                None
+                self.handle_error(token, "Usage of undeclared variable");
             }
-        } else {
-            None
         }
+        None
     }
 
     fn fold_binary_expression(
@@ -895,16 +1062,21 @@ impl TypeFolder {
                         },
                     };
                     if let Some(node_type) = maybe_node_type {
-                        let substructure = TypedExpressionStructure::Binary(
-                            Box::from(typed_lhs),
-                            Box::from(typed_rhs),
-                        );
-                        return Some(TypedExpression {
-                            address: self.get_new_simple_address(),
-                            token: op.clone(),
-                            node_type,
-                            substructure,
-                        });
+                        if let Some(op_kind) =
+                            string_as_opkind(&op.lexeme)
+                        {
+                            let substructure = TypedExpressionStructure::Binary(
+                                op_kind,
+                                Box::from(typed_lhs),
+                                Box::from(typed_rhs),
+                            );
+                            return Some(TypedExpression {
+                                address: self.get_new_simple_address(),
+                                token: op.clone(),
+                                node_type,
+                                substructure,
+                            });
+                        }
                     }
                 }
             }
@@ -914,50 +1086,75 @@ impl TypeFolder {
 
     fn type_integer_expression(&mut self, op: &Token) -> Option<NodeType> {
         match string_as_opkind(&op.lexeme) {
-            OpKind::Addition | OpKind::NumArithmetic | OpKind::Modulo => {
-                Some(NodeType::Simple(SimpleType::Integer))
-            }
-            OpKind::Relational => Some(NodeType::Simple(SimpleType::Boolean)),
-            _ => {
-                self.errors.push(format!("Bad operator for integer"));
-                None
-            }
+            Some(op_kind) => match op_kind {
+                OpKind::Addition | OpKind::Modulo => {
+                    Some(NodeType::Simple(SimpleType::Integer))
+                }
+                OpKind::NumArithmetic(_arit) => {
+                    Some(NodeType::Simple(SimpleType::Integer))
+                }
+                OpKind::Relational(_rel) => {
+                    Some(NodeType::Simple(SimpleType::Boolean))
+                }
+                _ => {
+                    self.handle_error(op, "Bad operator for integer");
+                    None
+                }
+            },
+            None => None,
         }
     }
 
     fn type_string_expression(&mut self, op: &Token) -> Option<NodeType> {
         match string_as_opkind(&op.lexeme) {
-            OpKind::Addition => Some(NodeType::Simple(SimpleType::String)),
-            OpKind::Relational => Some(NodeType::Simple(SimpleType::Boolean)),
-            _ => {
-                self.errors.push(format!("Bad operator for string"));
-                None
-            }
+            Some(op_kind) => match op_kind {
+                OpKind::Addition => Some(NodeType::Simple(SimpleType::String)),
+                OpKind::Relational(_arith) => {
+                    Some(NodeType::Simple(SimpleType::Boolean))
+                }
+                _ => {
+                    self.handle_error(op, "Bad operator for string");
+                    None
+                }
+            },
+            None => None,
         }
     }
 
     fn type_real_expression(&mut self, op: &Token) -> Option<NodeType> {
         match string_as_opkind(&op.lexeme) {
-            OpKind::Addition | OpKind::NumArithmetic => {
-                Some(NodeType::Simple(SimpleType::Real))
-            }
-            OpKind::Relational => Some(NodeType::Simple(SimpleType::Boolean)),
-            _ => {
-                self.errors.push(format!("Bad operator for integer"));
-                None
-            }
+            Some(op_kind) => match op_kind {
+                OpKind::Addition => Some(NodeType::Simple(SimpleType::Real)),
+                OpKind::NumArithmetic(_variant) => {
+                    Some(NodeType::Simple(SimpleType::Real))
+                }
+                OpKind::Relational(_opr) => {
+                    Some(NodeType::Simple(SimpleType::Boolean))
+                }
+                _ => {
+                    self.handle_error(op, "Bad operator for integer");
+                    None
+                }
+            },
+            None => None,
         }
     }
 
     fn type_boolean_expression(&mut self, op: &Token) -> Option<NodeType> {
         match string_as_opkind(&op.lexeme) {
-            OpKind::Relational | OpKind::BoolArithmetic => {
-                Some(NodeType::Simple(SimpleType::Boolean))
-            }
-            _ => {
-                self.errors.push(format!("Bad operator for integer"));
-                None
-            }
+            Some(op_kind) => match op_kind {
+                OpKind::Relational(_variant) => {
+                    Some(NodeType::Simple(SimpleType::Boolean))
+                }
+                OpKind::BoolArithmetic(_variant) => {
+                    Some(NodeType::Simple(SimpleType::Boolean))
+                }
+                _ => {
+                    self.handle_error(op, "Bad operator for integer");
+                    None
+                }
+            },
+            None => None,
         }
     }
 

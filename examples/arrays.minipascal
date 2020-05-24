@@ -8,14 +8,14 @@ begin
   begin
     A[i] := 5 - i;
     i := i + 1;
-  end
-  i := 0
+  end;
+  i := 0;
   B := A;
   while i < 5 do
   begin
     writeln(B[i]);
     i := i + 1;
-  end
+  end;
 end.
 
 

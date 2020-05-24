@@ -1,6 +1,5 @@
-use crate::ast::NodeType;
-use crate::ast::Address;
-use crate::ast::SimpleType;
+use crate::typedast::*;
+use crate::address::Address;
 use std::collections::HashMap;
 
 #[derive(PartialEq)]
@@ -9,7 +8,6 @@ pub enum ConstructCategory {
     ArrayVar,
     Function(Vec<NodeType>, NodeType),
     Procedure(Vec<NodeType>),
-    Program,
     TypeId,
     Special,
 }
@@ -58,22 +56,6 @@ impl Symboltable {
             .insert(scope.scope_number, scope.clone());
         self.scopestack.push(scope.scope_number);
         self.current_scope_number = scope.scope_number;
-    }
-
-    pub fn enter_scope_with_number(&mut self, scope_number: i32) {
-        if let Some(scope) = self.scope_information_table.get(&scope_number) {
-            self.scopestack.push(scope.scope_number);
-        }
-    }
-
-    pub fn current_scope(&self) -> Option<&Scope> {
-        match self.scopestack.last() {
-            Some(scope_number) => match self.scope_information_table.get(scope_number) {
-                Some(scope) => Some(scope),
-                None => None,
-            },
-            None => None,
-        }
     }
 
     pub fn get_current_scope_number(&self) -> i32 {
@@ -136,13 +118,6 @@ impl Symboltable {
         }
     }
 
-    pub fn is_visible(&self, name: &String) -> bool {
-        match self.lookup(name) {
-            Some(_scope) => true,
-            None => false,
-        }
-    }
-
     fn lookup_explicit_scope(&self, name: &String, scope_number: i32) -> Option<&Entry> {
         match self.table.get(&scope_number) {
             Some(scope) => match scope.get(name) {
@@ -167,7 +142,7 @@ impl Symboltable {
 fn predefined_ids() -> Vec<Entry> {
     let mut entries = Vec::new();
     entries.push(Entry {
-        name: String::from("Boolean"),
+        name: String::from("boolean"),
         category: ConstructCategory::TypeId,
         value: String::from("0"),
         entry_type: NodeType::Simple(SimpleType::Boolean),

@@ -1,0 +1,17 @@
+program functionstest;
+function add(a:integer, b:integer): integer;
+begin
+  return a + b;
+end;
+function factorial(i: integer): integer;
+begin
+  if i <= 1 then return i
+  else
+  begin
+    return i * factorial(i-1);
+  end;
+end;
+begin
+  writeln(add(add(10, 8), 10));
+  writeln(factorial(3));
+end.

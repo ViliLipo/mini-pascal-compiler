@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::scanner::Scanner;
-use crate::scanner::Token;
-use crate::scanner::TokenKind;
+use crate::token::Token;
+use crate::token::TokenKind;
 
 pub struct Parser {
     scanner: Scanner,
@@ -11,6 +11,22 @@ pub struct Parser {
 }
 
 impl Parser {
+
+    pub fn new(scanner: Scanner) -> Parser {
+        Parser {
+            scanner: scanner,
+            errors: Vec::new(),
+            current_token: Token {
+                token_kind: TokenKind::Error,
+                lexeme: String::from(""),
+                column: 0,
+                row: 0,
+            },
+            ctt: TokenKind::Error,
+        }
+    }
+
+
     fn next_token(&mut self) {
         self.current_token = self.scanner.get_next_token();
         self.ctt = self.current_token.token_kind;
@@ -32,14 +48,14 @@ impl Parser {
         let line = self.current_token.row + 1;
         let column = self.current_token.column + 1;
         let complete_message = format!(
-            "Syntax error: {} On line: {}, column: {}.",
+            "Syntax error: {} on line: {}, column: {}.",
             msg, line, column
         );
         self.errors.push(complete_message);
     }
 
     pub fn program(&mut self) -> Option<AST> {
-        self.next_token();
+        self.next_token(); // Gets the first actual token
         if let TokenKind::Program = self.ctt {
             self.next_token();
             if let TokenKind::Identifier = self.ctt {
@@ -47,7 +63,6 @@ impl Parser {
                 self.next_token();
                 if let Err(msg) = self.skip_delimiter(TokenKind::SemiColon) {
                     self.handle_error(msg.as_str());
-                    return None;
                 }
                 if let Some(subroutines) = self.functions_and_procedures() {
                     if let Some(main_block) = self.block() {
@@ -57,8 +72,9 @@ impl Parser {
                     }
                 }
             }
+        } else {
+            self.handle_error("Program does not start with program");
         }
-        self.handle_error("Program does not start with program");
         None
     }
 
@@ -112,7 +128,43 @@ impl Parser {
     }
 
     fn function(&mut self) -> Option<Subroutine> {
-        None
+        self.next_token();
+        if let TokenKind::Identifier = self.ctt {
+            let token = self.current_token.clone();
+            self.next_token();
+            if let Some(parameters) = self.parameters() {
+                if let Err(msg) = self.skip_delimiter(TokenKind::Colon) {
+                    self.handle_error(msg.as_str());
+                } else {
+                    if let Some(type_construct) = self.type_construct() {
+                        if let Err(msg) =
+                            self.skip_delimiter(TokenKind::SemiColon)
+                        {
+                            self.handle_error(msg.as_str());
+                        } else {
+                            if let Some(block) = self.block() {
+                                if let Err(msg) =
+                                    self.skip_delimiter(TokenKind::SemiColon)
+                                {
+                                    self.handle_error(msg.as_str());
+                                } else {
+                                    if let Statement::Block(is_block_ok) = block
+                                    {
+                                        return Some(Subroutine::Function(
+                                            token,
+                                            parameters,
+                                            is_block_ok,
+                                            type_construct,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return None;
     }
 
     fn procedure(&mut self) -> Option<Subroutine> {
@@ -161,6 +213,11 @@ impl Parser {
                 _ => {
                     if let Some(statement) = self.statement() {
                         statements.push(statement);
+                        if let Err(msg) =
+                            self.skip_delimiter(TokenKind::SemiColon)
+                        {
+                            self.handle_error(msg.as_str());
+                        }
                     } else {
                         self.next_token();
                     }
@@ -226,7 +283,7 @@ impl Parser {
                                 Some(Box::from(else_statement)),
                             ));
                         }
-                        self.handle_error("Missing else body");
+                        self.handle_error("Failed to parse else body");
                         return None;
                     } else {
                         return Some(Statement::If(
@@ -255,17 +312,17 @@ impl Parser {
                 if let Err(msg) =
                     self.skip_delimiter(TokenKind::OpenSquareBracket)
                 {
-                    self.errors.push(msg);
+                    self.handle_error(msg.as_str());
                     None
                 } else if let Some(expression) = self.expression() {
                     if let Err(msg) =
                         self.skip_delimiter(TokenKind::CloseSquareBracket)
                     {
-                        self.errors.push(msg);
+                        self.handle_error(msg.as_str());
                         None
                     } else if let Err(msg) = self.skip_delimiter(TokenKind::Of)
                     {
-                        self.errors.push(msg);
+                        self.handle_error(msg.as_str());
                         None
                     } else if let TokenKind::Identifier = self.ctt {
                         let type_token = self.current_token.clone();
@@ -280,7 +337,7 @@ impl Parser {
                 }
             }
             _ => {
-                self.errors.push(String::from("No type given"));
+                self.handle_error("No type given");
                 None
             }
         }
@@ -295,13 +352,11 @@ impl Parser {
                 if let Err(msg) = self.skip_delimiter(TokenKind::Colon) {
                     self.handle_error(msg.as_str());
                     return None;
-                } else {
-                    if let Some(type_description) = self.type_construct() {
-                        return Some(Statement::Declaration(
-                            id_token,
-                            type_description,
-                        ));
-                    }
+                } else if let Some(type_description) = self.type_construct() {
+                    return Some(Statement::Declaration(
+                        id_token,
+                        type_description,
+                    ));
                 }
             }
         }
@@ -322,8 +377,7 @@ impl Parser {
                         }
                     }
                     Expression::Call(_token, _params) => {
-                        let msg = format!("Can't assign to a call.");
-                        self.errors.push(msg);
+                        self.handle_error("Can't assign to a call.");
                         None
                     }
                     _ => None,
@@ -590,7 +644,7 @@ impl Parser {
                         if let Err(msg) =
                             self.skip_delimiter(TokenKind::CloseBracket)
                         {
-                            self.errors.push(msg)
+                            self.handle_error(msg.as_str())
                         }
                         Some(arguments)
                     }
@@ -598,19 +652,5 @@ impl Parser {
             }
             _ => None,
         }
-    }
-}
-
-pub fn build_parser(scanner: Scanner) -> Parser {
-    Parser {
-        scanner: scanner,
-        errors: Vec::new(),
-        current_token: Token {
-            token_kind: TokenKind::Error,
-            lexeme: String::from(""),
-            column: 0,
-            row: 0,
-        },
-        ctt: TokenKind::Error,
     }
 }

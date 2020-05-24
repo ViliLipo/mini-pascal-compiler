@@ -1,0 +1,4 @@
+program writetest;
+begin
+  writeln("this", "should", "work", 1, 1.5, 5 + 4, true)
+end.

@@ -1,6 +1,15 @@
 program test_real;
 begin
-  var halfpi: real;
-  halfpi := 3.14 / 2.0;
-  writeln(halfpi);
+  var r: real;
+  r := 3.0 / 2.0;
+  assert(r = 1.50);
+  assert(r <= 1.50);
+  assert(r >= 1.50);
+  assert(r <= 1.51);
+  assert(r >= 1.49);
+  assert(r > 1.49);
+  assert(r < 1.51);
+  assert(not(r < 1.50));
+  assert(not(r > 1.50));
+  writeln("Real tests passed!");
 end.

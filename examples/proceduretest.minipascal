@@ -1,21 +1,36 @@
 program proceduretest;
-procedure test(i : integer);
+procedure stringmut(s: string);
 begin
-  writeln("Procedure jyrää!");
-  writeln(i);
-  return;
-end;
-procedure test2(i : integer);
-begin
-  writeln(i+10);
-end;
-procedure newwrite(s : string);
-begin
+  s := s + " Mutated?";
   writeln(s);
 end;
+procedure writesize(a: array[10] of integer);
 begin
-  writeln("Main jyrähtää ja");
-  test(5);
-  test2(3);
-  newwrite("YOLO toimi vittu");
+  writeln(a.size);
+end;
+function concat(a: array[3] of string): string;
+begin
+  var s: string;
+  s := "";
+  var i: integer;
+  i := 0;
+  while i < a.size do
+  begin
+    s := s + (" " + a[i]);
+    i := i + 1;
+  end;
+  return s;
+end;
+begin
+  var s1 : string;
+  s1 := "Is this";
+  stringmut(s1);
+  writeln(s1);
+  var b: array[10] of integer;
+  writesize(b);
+  var strings: array[3] of string;
+  strings[0] := "Donkey";
+  strings[1] := "Kong";
+  strings[2] := "Rules";
+  writeln(concat(strings));
 end.

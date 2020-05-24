@@ -1,5 +1,7 @@
 use crate::ast::*;
-use crate::scanner::Token;
+use crate::address::Address;
+use crate::typedast::*;
+use crate::token::Token;
 
 pub trait Visitor {
     fn visit_ast(&mut self, node: &AST);
@@ -9,6 +11,13 @@ pub trait Visitor {
         name: &Token,
         params: &Vec<(Token, TypeDescription)>,
         body: &Vec<Statement>,
+    );
+    fn visit_function(
+        &mut self,
+        name: &Token,
+        params: &Vec<(Token, TypeDescription)>,
+        body: &Vec<Statement>,
+        out_type: &TypeDescription,
     );
     fn visit_block(&mut self, node: &Vec<Statement>);
     fn visit_statement(&mut self, node: &Statement);

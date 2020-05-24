@@ -8,14 +8,14 @@ begin
   begin
     A[i] := "AASI" + " LMAOO";
     i := i + 1;
-  end
+  end;
   i := 0
   B := A;
   while i < 5 do
   begin
     writeln(B[i]);
     i := i + 1;
-  end
+  end;
 end.
 
 

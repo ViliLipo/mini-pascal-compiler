@@ -16,7 +16,8 @@ impl Source {
 
     pub fn end_of_file(&self) -> bool {
         self.row >= self.lines.len()
-            || (self.row + 1 == self.lines.len() && self.column == self.lines[self.row].len())
+            || (self.row + 1 == self.lines.len()
+                && self.column == self.lines[self.row].len())
     }
 
     pub fn get_next_char(&mut self) -> char {
@@ -85,11 +86,13 @@ pub fn create_source(text: String) -> Source {
     }
 }
 
-pub fn read_file(filename: &String) -> Source {
-    let contents = fs::read_to_string(filename).expect("Something went wrog reading the file");
-    create_source(contents)
+pub fn read_file(filename: &String) -> Result<Source, &'static str> {
+    if let Ok(contents) = fs::read_to_string(filename) {
+        Ok(create_source(contents))
+    } else {
+        Err("Could not read source file")
+    }
 }
-
 
 #[cfg(test)]
 mod test {

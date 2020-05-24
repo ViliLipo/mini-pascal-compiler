@@ -12,10 +12,10 @@ void mp_assert(int condition, char* message) {
   }
 }
 
-void alloc_str_array(char** str_array, int size) {
+void alloc_str_array(char** str_array, int size, int string_size) {
   int i = 0;
   while (i < size) {
-    str_array[i] = (char *) malloc(256);
+    str_array[i] = (char *) malloc(string_size);
     i = i + 1;
   }
 }

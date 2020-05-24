@@ -1,0 +1,14 @@
+program string_test;
+begin
+  var s: string;
+  s := "Minipascal is\n";
+  s := s + "a subset of Pascal.\n";
+  assert(s = "Minipascal is\na subset of Pascal.\n");
+  var s2: string;
+  s2 := "ab";
+  assert(s2 = "ab");
+  assert("a" < "b");
+  assert("aa" < "ba");
+  assert(not("aa" > "ba"));
+  writeln("String test passed!");
+end.

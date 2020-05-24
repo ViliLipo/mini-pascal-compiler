@@ -10,8 +10,11 @@ begin
   assert(i >= 10);
   assert(i >= 9);
   assert(i <> 9);
+  assert(not (10 < i));
+  assert(not (10 > i));
   assert(5 + 5 = 10);
   assert(6 / 2 = 3);
   assert(6 % 2 = 0);
   assert(6 % 4 = 2);
+  writeln("Integer test passed!");
 end.
